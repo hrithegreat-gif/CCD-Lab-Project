@@ -1,93 +1,91 @@
-# AI Model Serving Platform with Dynamic Scaling
+# CCD Lab: cloud-native AI serving on a $100 AWS budget
 
-Phase 1 is implemented: a FastAPI REST API with real CPU sentiment inference,
-validation, health checks, model metadata and automated tests. No EKS is used.
+A real CPU sentiment API with opt-in text/speech adapters and a reproducible Mumbai (`ap-south-1`) deployment package. The baseline is **one EC2 `m7i-flex.large` running k3s**, not EKS, a GPU, a managed load balancer or a collection of unnecessary paid services.
 
-Start with [docs/PHASE_1.md](docs/PHASE_1.md). It contains complete PowerShell and
-Bash install/run/test commands, expected responses, acceptance checks and recovery.
+[Implementation plan](docs/IMPLEMENTATION_PLAN.md) · [Verification ledger](docs/VERIFICATION.md) · [Budget](docs/BUDGET.md)
 
-## Quick start on Windows PowerShell
+## What is included
 
-Open the extracted ai-model-serving-platform folder in your terminal:
+- FastAPI + pinned, quantized DistilBERT ONNX inference; strict validation, bounded concurrency/native timeout, Bearer-key authentication and streamed request-byte limits.
+- **Inference Studio**: polished, responsive browser playground with live model availability, real inference results, downloadable JSON/WAV and tab-only run history. Served by FastAPI, with no frontend build step or CDN dependencies.
+- Health/readiness probes, sanitized structured logs and real Prometheus-format HTTP metrics.
+- Non-root sentiment container with baked pinned model assets; Kubernetes Deployment/NodePort/HPA and a bounded k6 load test.
+- Terraform for Mumbai EC2/k3s, private ECR/S3, SSM deployment/access, scoped IAM, short CloudWatch log retention and an on-boot auto-stop timer.
+- GitHub Actions tests/image checks and an explicitly dispatched, environment-protected OIDC deploy workflow.
+- Optional Qwen3.5-0.8B generation, Kitten Mini speech, Groq text and Groq Whisper transcription routes. **Disabled by default**; real adapter execution is a separate acceptance gate.
 
-    py -3.12 -m venv .venv
-    .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-    .\.venv\Scripts\python.exe scripts/prepare_model.py --verify
-    .\.venv\Scripts\python.exe -m pytest tests/ -v
-    .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+Source artifacts and mocked failure-path tests do not prove a Docker build, HPA event, GitHub run or cloud deployment. See the ledger for the actual executed checks. Benchmark results are deliberately not invented.
+
+## Start locally (Python 3.12)
+
+From the repository root, with [uv](https://docs.astral.sh/uv/) installed:
+
+```powershell
+# Do not overwrite an existing configured .env.
+Copy-Item .env.example .env
+uv run --python 3.12 --no-project --with-requirements requirements-dev.txt python scripts/prepare_model.py --verify
+uv run --python 3.12 --no-project --with-requirements requirements-dev.txt python -m pytest tests/ -v
+uv run --python 3.12 --no-project --with-requirements requirements.txt python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+```
 
 In a second terminal:
 
-    .\.venv\Scripts\python.exe scripts/smoke_test.py
+```powershell
+uv run --python 3.12 --no-project --with-requirements requirements-dev.txt python scripts/smoke_test.py
+```
 
-Open http://127.0.0.1:8000/docs to try the API. The guide also includes Bash commands.
-Copy .env.example to .env only when you want to configure settings.
+The first package/model preparation needs Internet access; the baseline model assets total approximately 68 MB. The example leaves `API_KEY` empty for **loopback-only local development**. For auth-enabled local use, configure a nonempty key and supply the same `API_KEY` environment variable to the smoke checker. Cloud deployment refuses an empty key. Keep one worker; scale with Kubernetes replicas rather than duplicating every model in multiple API workers.
 
-## Implemented endpoints
+Open **[Inference Studio](http://127.0.0.1:8000/)** for the demo, or [Swagger](http://127.0.0.1:8000/docs) for the API. Choose an example and click **Analyze sentiment** (or Ctrl/Cmd + Enter). With authentication enabled, use **Session access** to enter the server key; it is held only in this tab's memory. Optional adapters remain visibly disabled unless enabled and ready. See the [frontend demo guide](docs/FRONTEND.md) for capabilities, safety and browser checks.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | /health/live | Process liveness |
-| GET | /health/ready | Model readiness after real warm-up |
-| GET | /api/models | Allowlisted model metadata |
-| GET | /api/models/{model_id} | Model details or 404 |
-| POST | /api/inference | Real label, score and measured timing |
-| GET | /docs | Swagger UI |
-| GET | /openapi.json | Generated API schema |
+POST `/api/inference` accepts:
 
-## Five phase roadmap
+```json
+{"model":"sentiment","input":"I love this product. It is absolutely wonderful!"}
+```
 
-| Phase | Scope | Current status |
-| --- | --- | --- |
-| 1 | Environment, REST API, one real model and tests | Implemented and tested here; verify on your machine |
-| 2 | Docker, independent model services and routing | Pending |
-| 3 | Floci/AWS storage, metadata, queue and workers | Pending |
-| 4 | Local Kubernetes, HPA, observability and load experiments | Pending |
-| 5 | CI/CD, AWS deployment testing and final demo | Pending |
+[Detailed setup](docs/PHASE_1.md) · [API contract](docs/API_CONTRACT.md) · [Model provenance](models/README.md)
 
-[docs/PHASES.md](docs/PHASES.md) explains each gate. AWS integrations remain part of
-the full project, but they are not required to test the Phase 1 API. The cloud
-compute approach is self-managed Kubernetes/k3s on EC2, with no EKS. Local
-emulation and real cloud deployment have separate verification milestones.
+## Container, Kubernetes and measurements
 
-## Project files
+Follow [the Kubernetes guide](docs/KUBERNETES.md), then [the load-test instructions](loadtest/README.md). Render the image and optional pull-secret placeholders rather than applying an unresolved Deployment. Provide the `serving-secrets` Secret even for local mode. Metrics Server must report actual pod CPU for HPA to act.
 
-| Path | Responsibility |
+Default HPA: 1–3 sentiment pods, conservative scale-up/down behavior. Three pods on one 2-vCPU node still share those two CPUs and are **not high availability**. Single-replica updates can briefly interrupt service. Record replica/CPU/memory observations and latency/throughput together; a source manifest is not scaling evidence.
+
+## Optional models
+
+[Model extension guide](docs/MODEL_EXTENSIONS.md) documents flags, dependencies, pinned sources and separate request contracts:
+
+| Route | Purpose |
 | --- | --- |
-| app/main.py | REST endpoints, lifespan loading, health and safe failures |
-| app/config.py | Validated environment settings |
-| app/schemas.py | Request/response schemas |
-| app/model_registry.py | Allowlisted ID, immutable upstream revision and metadata |
-| app/inference.py | Download/load quantized ONNX model and CPU predictions |
-| app/observability.py | Structured logs without full input text |
-| tests/ | 32 lifecycle, validation, failure and real-model checks |
-| scripts/prepare_model.py | Download pinned assets and verify real predictions |
-| scripts/smoke_test.py | Live HTTP acceptance checks |
-| docs/PHASE_1.md | Setup and troubleshooting |
-| models/README.md | Model provenance and limitations |
-| docs/VERIFICATION.md | Actual verification performed for this release |
+| `/api/capabilities` | Disabled/loading/unavailable/ready extension status |
+| `/api/generate` | Local Qwen or Groq text generation |
+| `/api/speech` | Local Kitten Mini WAV output |
+| `/api/transcriptions` | Bounded raw audio upload to Groq Whisper |
 
-Dockerfile, Kubernetes YAML, load-test scripts, cleanup scripts and CI are still
-clearly marked placeholders. They are not runnable infrastructure or passing CI. The CI placeholder is named
-ci.yml.example so GitHub does not try to run it.
-Do not run the future Docker/Kubernetes steps yet.
+Do not enable all local models in every 1-GiB sentiment pod. Their dependencies, images, memory limits and real CPU latency must be checked independently. Groq charges/quotas are outside AWS credits; the sentiment load test must not invoke it.
 
-## Model and constraints
+## Authorized AWS deployment
 
-The model is DistilBERT fine-tuned for English binary SST-2 sentiment, using
-Xenova's quantized ONNX export. Three required files total 68,293,328 bytes; weights
-are downloaded on first preparation/startup rather than bundled in the archive.
-No paid inference API, GPU or PyTorch installation is required.
+1. Review [budget assumptions](docs/BUDGET.md), account-plan eligibility and the remaining credits.
+2. Follow [the AWS runbook](docs/AWS_RUNBOOK.md): review Terraform before apply, create SSM SecureStrings outside state, and use encrypted SSM port forwarding for access.
+3. Configure/protect GitHub's `aws-demo` environment and the variables described in [CI/CD](docs/CI_CD.md).
+4. Dispatch the deploy workflow only after local gates pass and billable resources have been explicitly authorized.
+5. Verify a real authenticated prediction, deployment/log artifacts and actual HPA behavior; then stop/tear down promptly.
 
-The immutable revision is recorded in model_registry.py. The model loads once
-per process and runs a warm-up before readiness. Failed loading returns 503 for
-readiness/inference while retaining liveness. Restart after fixing the cause.
+The default security group has **no inbound ports**. There is no public plaintext API. CI uses OIDC temporary credentials, immutable commit image tags and a checksum-verified S3 deployment bundle; it does not apply Terraform or start stopped instances automatically.
 
-Default input limit is 2000 characters, with truncation to 256 tokens disclosed in
-the response. Confidence is a softmax class score, not calibrated correctness.
-Two inference slots are allowed; additional active requests get 429. A 15-second
-native inference deadline returns 504. Logs omit full input and private exception
-messages. The API is a local lab service; authentication is not implemented.
+Illustrative estimate, not a cap:
 
-Stop Uvicorn with Ctrl+C. Keep .env and downloaded assets out of Git.
-Performance experiments, Kubernetes scaling and cloud deployment are not yet tested.
+```powershell
+python scripts/cost_estimate.py --hours 200 --months 2
+```
+
+This estimates **$35.71 AWS** under the checked assumptions, including retained storage and a reserve. Stopping EC2 does not delete disks/images/objects/logs or stop their storage charges. Budget alerts are delayed notifications, not enforcement.
+
+## Safety and acceptance
+
+- No billable resources or paid inference calls are required for local validation.
+- Never commit `.env`, keys, Terraform state/variable files or kubeconfig.
+- Cleanup helpers require an explicit Kubernetes context and confirmation; they only delete the fixed namespace, not AWS resources.
+- Keep [the phased gates](docs/PHASES.md) and [verification ledger](docs/VERIFICATION.md) honest; queues, durable jobs, DynamoDB, Floci, GPU/EKS and public HTTPS are not implemented prerequisites.

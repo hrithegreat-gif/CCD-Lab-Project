@@ -14,8 +14,10 @@ Total required asset size verified by actual download: 68,293,328 bytes.
 
 The trained model's publisher identifies its license as Apache-2.0. The export
 card links to the trained model; it does not declare a separate license in its
-metadata. The release archive does not redistribute model weights. Retain
-upstream attribution/license information if weights are bundled in Phase 2.
+metadata. Git does not redistribute model weights; the Docker build downloads
+and bundles the pinned export for offline runtime startup. The image also bundles
+[attribution](NOTICE.md) and the [Apache-2.0 license](LICENSE-APACHE-2.0.txt) under
+`/opt/model-notices/`. Preserve these when redistributing the image or weights.
 License reference: https://www.apache.org/licenses/LICENSE-2.0
 
 The model is pretrained/fine-tuned for English SST-2 binary sentiment; we are

@@ -14,3 +14,21 @@ results/raw/
 *.log
 .DS_Store
 Thumbs.db
+
+# Terraform state, plans and local inputs can contain secrets.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+plan.json
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!*.tfvars.json.example
+
+# Local cluster credentials and generated experiment output.
+kubeconfig*
+results/*.json
+results/*.jsonl
+results/*.txt
+.validation/

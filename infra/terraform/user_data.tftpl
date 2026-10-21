@@ -1,0 +1,141 @@
+#!/bin/bash
+# CCD Lab k3s node bootstrap (AL2023 x86_64, executed by cloud-init as root).
+#
+# FIRST action: arm the auto-stop timer — before any package install or
+# download — so even a FAILED bootstrap still powers the node off on schedule
+# instead of leaving an unattended, broken instance billing indefinitely.
+#
+# Then installs: pinned k3s ${k3s_version} and the CloudWatch agent with REAL
+# collection paths, jq.
+#
+# Deliberately does NOT: install git, clone/pull code, pull the deploy bundle,
+# pull container images, create Kubernetes workloads, or call any AWS stop API.
+# First deployment is an explicit operator action through the
+# ${project_prefix}-deploy-k3s SSM document.
+#
+# All output lands in /var/log/cloud-init-output.log (collected by the agent).
+set -euxo pipefail
+
+export AWS_DEFAULT_REGION=${aws_region}
+export AWS_REGION=${aws_region}
+
+# ---- auto-stop timer FIRST (default: power off ${autostop_hours}h after boot).
+# systemctl poweroff makes EC2 stop the instance
+# (instanceInitiatedShutdownBehavior=stop), so the EBS volume survives; no AWS
+# API call is involved. Override live on the host (systemctl edit /
+# systemctl list-timers) or per deployment via the autostop_hours variable. ----
+cat >/etc/systemd/system/ccd-lab-autostop.service <<'UNIT'
+[Unit]
+Description=ccd-lab: power off an unattended lab session
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl poweroff --no-wall
+UNIT
+
+cat >/etc/systemd/system/ccd-lab-autostop.timer <<TIMER
+[Unit]
+Description=ccd-lab: auto-stop ${autostop_hours}h after boot
+
+[Timer]
+OnBootSec=${autostop_hours}h
+Unit=ccd-lab-autostop.service
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+systemctl daemon-reload
+systemctl enable --now ccd-lab-autostop.timer
+
+# ---- baseline tooling (AL2023 already ships AWS CLI v2 + SSM Agent) ----
+dnf install -y jq amazon-cloudwatch-agent
+install -d -m 0755 /opt/ccd-lab /opt/ccd-lab/deploy-bundles /var/log/k3s
+
+# ---- k3s server, pinned release (metrics-server is enabled by default) ----
+curl -fsSL https://get.k3s.io | \
+  INSTALL_K3S_VERSION="${k3s_version}" \
+  INSTALL_K3S_EXEC="server --disable traefik --disable servicelb --write-kubeconfig-mode 600" \
+  sh -s -
+
+cat >/etc/profile.d/k3s.sh <<'PROFILE'
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+PROFILE
+chmod 0644 /etc/profile.d/k3s.sh
+
+# ---- persist the k3s service journal to a file the CloudWatch agent tails ----
+cat >/etc/systemd/system/ccd-lab-k3s-logs.service <<'UNIT'
+[Unit]
+Description=ccd-lab: persist k3s journal for CloudWatch collection
+After=k3s.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+ExecStart=/bin/sh -c 'exec /usr/bin/journalctl -f -u k3s -o short-iso >> /var/log/k3s/k3s-service.log'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+cat >/etc/logrotate.d/ccd-lab-k3s-logs <<'ROTATE'
+/var/log/k3s/k3s-service.log {
+    daily
+    rotate 3
+    maxsize 50M
+    copytruncate
+    compress
+    missingok
+    notifempty
+}
+ROTATE
+
+systemctl daemon-reload
+systemctl enable --now ccd-lab-k3s-logs.service
+
+# ---- CloudWatch agent: log groups are pre-created by Terraform with bounded
+# retention; the node role may only write to those exact groups. The agent
+# config contains no secrets. Stream names use the documented {instance_id}
+# placeholder only: all files matching a wildcard share that stream, so events
+# are interleaved (see docs/AWS_RUNBOOK.md). ----
+cat >/opt/aws/amazon-cloudwatch-agent/etc/config.json <<'CWCFG'
+{
+  "agent": {
+    "region": "${aws_region}",
+    "logfile": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+    "debug": false
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/containers/*.log",
+            "log_group_name": "${log_group_k3s_pods}",
+            "log_stream_name": "{instance_id}",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/k3s/k3s-service.log",
+            "log_group_name": "${log_group_k3s_service}",
+            "log_stream_name": "{instance_id}_k3s-service",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/cloud-init-output.log",
+            "log_group_name": "${log_group_bootstrap}",
+            "log_stream_name": "{instance_id}_cloud-init",
+            "timezone": "UTC"
+          }
+        ]
+      }
+    }
+  }
+}
+CWCFG
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
+
+echo "ccd-lab bootstrap complete"

@@ -1,2 +1,22 @@
-# Phase 4 placeholder: ClusterIP Service ai-model-serving, port/targetPort 8000.
-# Match the Deployment labels.
+# NodePort Service: reached only inside the node/cluster network. Operators
+# tunnel to it through SSM port forwarding; there is no public ingress, TLS
+# terminator or LoadBalancer in this lab (servicelb/traefik are disabled).
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-model-serving
+  namespace: ai-serving
+  labels:
+    app.kubernetes.io/name: ai-model-serving
+    app.kubernetes.io/component: inference
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ai-model-serving
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: http
+      nodePort: 30080

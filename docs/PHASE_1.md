@@ -6,9 +6,10 @@ It needs Python 3.12 and internet access for package installation and the first
 model download. Docker, Kubernetes and an AWS account are not needed for this
 phase. EKS is excluded from the project.
 
-Python 3.12 replaces the scaffold's tentative 3.11 selection. This implementation
-was tested on Python 3.12.14 on Linux. Windows instructions have not been executed
-on a Windows machine here.
+Python 3.12 replaces the scaffold's tentative 3.11 selection. The baseline was
+also audited using uv-managed Python 3.12.14 on Windows. Current executed checks,
+including the expanded suite, are recorded in [VERIFICATION.md](VERIFICATION.md).
+For a uv-based setup without a system Python registration, use the [README](../README.md).
 
 ## Windows PowerShell
 
@@ -67,9 +68,10 @@ and negative predictions, and:
 
     PASS: pinned model assets are available.
 
-The full test suite should report 32 passed using the supplied defaults. Four
-integration tests run the actual ONNX model. Fault-injection tests use a test-only
-double for deterministic lifecycle/error checks; production uses the real model.
+The full test suite must pass without skips; use [the verification ledger](VERIFICATION.md)
+for the current count rather than the historical 32-test baseline. Integration
+tests run the actual ONNX model. Fault-injection tests use a test-only double for
+deterministic lifecycle/error checks; production uses the real model.
 
 After startup, open http://127.0.0.1:8000/docs. Expand POST /api/inference, select
 Try it out, and submit:
@@ -85,7 +87,9 @@ The live HTTP smoke checker ends with:
     PASS: Phase 1 live HTTP acceptance checks.
 
 It verifies health, metadata, positive/negative predictions and invalid requests,
-assuming the supplied 2000-character limit.
+discovering the configured character limit from metadata. For a protected server,
+supply its API key through the `API_KEY` environment variable; never paste keys
+into shared logs or screenshots.
 
 ## Validation and failure checks
 
@@ -104,10 +108,16 @@ assuming the supplied 2000-character limit.
 | Over 256 tokens within character limit | 200 and truncated true | Real-model test |
 | Repeated requests | One model load per process | Lifecycle test |
 
-The server completes startup loading before accepting HTTP requests. During
-startup connections may fail. If loading fails, it then serves liveness, metadata
-and docs, while readiness/inference remain 503. Fix the cause and restart;
-automatic startup retries are not implemented.
+By default, local startup completes the load attempt before accepting HTTP.
+Set `BACKGROUND_MODEL_LOAD=true` to serve liveness while loading; readiness stays
+503 until warm-up succeeds. Kubernetes enables background loading. If loading
+fails, liveness remains available while readiness/inference stay 503; fix the
+cause and restart. Automatic startup retries are not implemented.
+
+A nonempty `API_KEY` requires Bearer auth on `/api/*` and `/metrics`; health is
+public. With auth enabled, add the header to the manual requests above or use
+Swagger's Authorize button. An empty key is for local loopback use only. The
+byte-level request limit and optional adapters are described in [the API contract](API_CONTRACT.md).
 
 For a manual failed-startup demonstration, use an actually empty cache:
 
@@ -167,12 +177,13 @@ it is not a full HTTP timeout. Use one worker: each worker loads a separate mode
 ## Exit checklist
 
 - Model preparation verifies actual pinned weights.
-- All 32 tests pass.
+- The current full test suite passes without skips.
 - Live HTTP smoke checks pass.
 - /docs lets you submit positive and negative text.
 - Invalid requests return documented errors.
 - Record your own OS, CPU/RAM and Python in ENVIRONMENT.md.
 
-Stop the server with Ctrl+C. Confirm your results before Phase 2.
-AWS storage/metadata/queue integrations are planned for Phase 3, and actual cloud
-deployment for a later milestone. EKS will not be used.
+Stop the server with Ctrl+C. Confirm results before container/cluster validation.
+Use [the phased gates](PHASES.md) for the budget-first progression. Queues and a
+metadata database are not required prerequisites; Mumbai deployment is separately
+authorized and EKS is excluded.

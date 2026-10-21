@@ -1,0 +1,16 @@
+# Kitten TTS Mini 0.8 extension profile (app/extensions.py CAP_KITTEN).
+#
+# FULL RUNNABLE standalone profile: core runtime + the optional-only shared
+# extension file. Compatible with the core baseline; for Qwen AND Kitten in
+# one environment use requirements-qwen.txt + requirements-models.txt instead
+# (see requirements-models.txt — do not mix requirements.txt into the Qwen
+# profile environment).
+#
+# Baseline + optional metadata resolved for cp312 / manylinux x86_64 on
+# 2026-10-13, with an unpinned PyPI torch dependency in that dry-run. The exact
+# CPU torch wheel exists on its index; this full CPU profile was not installed
+# or fully resolver-checked. IMPORTANT: this is the official KittenML ONNX wheel for the
+# ~80M / ~79MB Mini 0.8 model — NOT KittenTTS 2 and NOT the unrelated PyPI
+# "kittentts" package (same import name, different code and voices).
+-r requirements.txt
+-r requirements-models.txt

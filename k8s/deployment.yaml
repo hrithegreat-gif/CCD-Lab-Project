@@ -1,3 +1,144 @@
-# Phase 4 placeholder: Deployment ai-model-serving, image ai-model-serving:dev.
-# Define port 8000, CPU/memory requests and limits, readiness/liveness probes,
-# one initial replica and rolling update strategy.
+# Deployment ai-model-serving: single-worker CPU sentiment inference.
+#
+# Sizing for the 2 vCPU / 8 GiB single-node k3s lab (docs/KUBERNETES.md):
+#   requests  cpu 500m / memory 512Mi  -> HPA utilization target is measurable;
+#                                         3 replicas plus k3s system overhead
+#                                         fit within the 2 vCPU / 8 GiB node.
+#   limits    cpu 1 / memory 1Gi       -> caps each Pod; CPU limits over-commit
+#                                         on one node and are enforced by CFS
+#                                         time slicing under contention (they
+#                                         do not add compute).
+# Rolling update maxSurge 0 / maxUnavailable 1 keeps the pod count within HPA
+# maxReplicas on one node (a surge Pod would sit Pending) at the cost of a
+# briefly unavailable single replica during rollouts; this lab has no HA.
+#
+# The model cache is a per-Pod emptyDir populated from the baked image cache;
+# no shared PVC (an RWO claim would serialize/lock rolling and HPA scale-ups).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-model-serving
+  namespace: ai-serving
+  labels:
+    app.kubernetes.io/name: ai-model-serving
+    app.kubernetes.io/component: inference
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-model-serving
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ai-model-serving
+        app.kubernetes.io/component: inference
+        app.kubernetes.io/part-of: ai-serving
+    spec:
+      # Workload does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # BEGIN imagePullSecrets
+      imagePullSecrets:
+        # Rendered only when scripts/render_k8s.py runs with --pull-secret;
+        # local clusters load the image into the node and omit this block.
+        - name: __PULL_SECRET__
+      # END imagePullSecrets
+      containers:
+        - name: serving
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            # Cloud deployments require a nonempty key (auth enabled). Local
+            # secrets may set an empty string, which disables authentication.
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: serving-secrets
+                  key: api-key
+            # Optional Groq extension credential; absent when unset.
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: serving-secrets
+                  key: groq-api-key
+                  optional: true
+            # 65536 >= max_input_chars*12+1024 for the default 2000-char input.
+            - name: MAX_REQUEST_BYTES
+              value: "65536"
+            # Serve liveness while the model loads in the background.
+            - name: BACKGROUND_MODEL_LOAD
+              value: "true"
+            # The image ships the pinned model cache; each Pod copies it into
+            # its writable emptyDir at start. No network download at runtime.
+            - name: MODEL_CACHE_DIR
+              value: /cache
+            - name: MODEL_LOCAL_FILES_ONLY
+              value: "true"
+            - name: TMPDIR
+              value: /tmp
+            - name: HOME
+              value: /tmp
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          # Health endpoints are public by contract; probes carry no auth.
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24   # allow up to ~2 minutes for load + warm-up
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: model-cache
+              mountPath: /cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # Per-Pod scratch; replaced on every rollout and scale-up. Deliberately
+        # NOT a shared PVC: a single RWO cache would deadlock HPA scale-out.
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

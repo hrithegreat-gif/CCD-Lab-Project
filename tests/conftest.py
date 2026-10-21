@@ -1,9 +1,12 @@
 """Fast fault-injection tests plus a separate, mandatory real-model integration suite."""
 import pytest
 from fastapi.testclient import TestClient
+
 from app.config import Settings
 from app.inference import Prediction, SentimentModel
 from app.main import create_app
+
+TEST_API_KEY = "test-api-key-0123456789"
 
 
 class TestModel:
@@ -34,6 +37,24 @@ def application():
 def client(application):
     with TestClient(application) as active:
         yield active
+
+
+@pytest.fixture
+def authed_application():
+    return create_app(
+        Settings(_env_file=None, api_key=TEST_API_KEY), model_factory=TestModel
+    )
+
+
+@pytest.fixture
+def authed_client(authed_application):
+    with TestClient(authed_application) as active:
+        yield active
+
+
+@pytest.fixture
+def auth_headers():
+    return {"Authorization": f"Bearer {TEST_API_KEY}"}
 
 
 @pytest.fixture(scope="session")

@@ -1,1 +1,7 @@
-# Phase 4 placeholder: namespace ai-serving.
+# Application namespace for the AI serving lab (docs/KUBERNETES.md).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-serving
+  labels:
+    app.kubernetes.io/part-of: ai-serving

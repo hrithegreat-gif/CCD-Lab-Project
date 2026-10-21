@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Inference Studio · CCD</title>
+  <meta name="description" content="Inference Studio — run sentiment, generation, speech and transcription tasks against your deployed models from one playground.">
+  <link rel="icon" type="image/svg+xml" href="/studio/assets/favicon.svg">
+  <link rel="stylesheet" href="/studio/assets/studio.css">
+  <script type="module" src="/studio/assets/studio.mjs"></script>
+</head>
+<body>
+  <div class="app">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">CCD</span>
+        <span class="brand-sub">Studio</span>
+      </div>
+
+      <nav class="nav" aria-label="Primary">
+        <button type="button" class="nav-item" id="nav-playground" data-view="playground" aria-current="page">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2 5.2 5.2 2-5.2 2-2 5.2-2-5.2-5.2-2 5.2-2z" fill="currentColor"/></svg>
+          <span>Playground</span>
+        </button>
+        <button type="button" class="nav-item" id="nav-models" data-view="models">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg>
+          <span>Models</span>
+        </button>
+        <button type="button" class="nav-item" id="nav-runs" data-view="runs">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 7.6V12l3.1 1.9"/></svg>
+          <span>Runs</span>
+        </button>
+      </nav>
+
+      <div class="side-stats">
+        <div class="stat">
+          <span class="stat-label">Runs</span>
+          <span class="stat-value" id="session-count">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Avg latency</span>
+          <span class="stat-value" id="session-latency">—</span>
+        </div>
+      </div>
+
+      <div class="side-foot">
+        <button type="button" class="btn btn-ghost" id="auth-open">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4"/><path d="M10.3 12.7 21 2m-4.2.8 3.2 3.2m-6 .2 2.1 2.1"/></svg>
+          <span id="auth-state">Not connected</span>
+        </button>
+        <a class="side-docs" id="docs-link" href="/docs" target="_blank" rel="noopener">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/><path d="M14 3h7v7M21 3l-9 9"/></svg>
+          <span>Docs</span>
+        </a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="page-head">
+        <div class="page-head-copy">
+          <h1 class="page-title" id="page-title">Your models. One playground.</h1>
+          <p class="page-subtitle" id="page-subtitle">Sentiment, generation, speech and transcription — run against your own deployed models, straight from the browser.</p>
+        </div>
+        <div class="head-status">
+          <div class="status-row">
+            <div class="status-chip" id="service-status" data-state="loading">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="service-status-label">Checking…</span>
+            </div>
+            <button type="button" class="btn btn-quiet" id="refresh-status">
+              <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 4 21 10 15 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L21 8.5"/></svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+          <p class="status-details" id="status-details">Details appear after the first status check.</p>
+        </div>
+      </header>
+
+      <section class="view" id="view-playground" aria-label="Playground">
+        <div class="task-bar">
+          <div class="tabs" id="task-tabs" role="tablist" aria-label="Inference task">
+            <button type="button" class="tab" role="tab" aria-controls="run-form" id="task-sentiment" data-task="sentiment" aria-selected="true"><span>Sentiment</span></button>
+            <button type="button" class="tab" role="tab" aria-controls="run-form" id="task-generate" tabindex="-1" data-task="generate" aria-selected="false"><span>Generate</span></button>
+            <button type="button" class="tab" role="tab" aria-controls="run-form" id="task-speech" tabindex="-1" data-task="speech" aria-selected="false"><span>Speech</span></button>
+            <button type="button" class="tab" role="tab" aria-controls="run-form" id="task-transcribe" tabindex="-1" data-task="transcribe" aria-selected="false"><span>Transcribe</span></button>
+          </div>
+          <div class="model-picker">
+            <label class="picker-label" for="model-select">Model</label>
+            <select id="model-select">
+              <option value="" selected disabled>Loading models…</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="model-card">
+          <div class="model-row">
+            <span class="model-name" id="model-name">—</span>
+            <span class="model-state" id="model-state" data-state="loading">checking</span>
+          </div>
+          <p class="model-description" id="model-description">The catalog appears once the studio service responds.</p>
+          <dl class="model-facts">
+            <div><dt>Runtime</dt><dd id="model-runtime">—</dd></div>
+            <div><dt>Limit</dt><dd id="model-limit">—</dd></div>
+          </dl>
+        </div>
+
+        <form class="run-layout" id="run-form" role="tabpanel" aria-labelledby="task-sentiment">
+          <div class="panel input-panel">
+            <div class="panel-head">
+              <h2 class="panel-title">Input</h2>
+              <div class="examples" id="examples" role="group" aria-label="Example inputs">
+                <span class="examples-label">Try</span>
+                <button type="button" class="chip" data-example="positive">Positive</button>
+                <button type="button" class="chip" data-example="negative">Negative</button>
+                <button type="button" class="chip" data-example="mixed">Mixed</button>
+              </div>
+            </div>
+
+            <div class="text-input-group" id="text-input-group">
+              <label class="field-label" id="input-label" for="input-text">Text</label>
+              <textarea id="input-text" rows="9" placeholder="Type or paste text — or start from an example."></textarea>
+              <div class="field-foot">
+                <span class="input-hint" id="input-hint">Shift + Enter adds a new line.</span>
+                <span class="char-count" id="char-count">0</span>
+              </div>
+            </div>
+
+            <div class="audio-input-group" id="audio-input-group" hidden>
+              <label class="field-label" for="audio-file">Audio file</label>
+              <div class="file-row">
+                <input type="file" id="audio-file" accept=".wav,.mp3,.mpga,.mp4,.m4a,.ogg,.webm,.flac,audio/*,application/ogg" aria-describedby="audio-file-name">
+                <span class="file-name" id="audio-file-name">No file chosen</span>
+              </div>
+            </div>
+
+            <div class="task-options generation-options" id="generation-options" hidden>
+              <label class="option-label" for="max-output-tokens">Max output tokens</label>
+              <input type="number" id="max-output-tokens" value="128" min="1" max="4096" step="1" inputmode="numeric">
+            </div>
+
+            <div class="task-options speech-options" id="speech-options" hidden>
+              <label class="option-label" for="voice-select">Voice</label>
+              <select id="voice-select">
+                <option value="" selected>Service default</option>
+              </select>
+            </div>
+
+            <div class="provider-notice" id="provider-notice" hidden>
+              <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 22s8-3.6 8-10V5.2L12 2 4 5.2V12c0 6.4 8 10 8 10z"/></svg>
+              <div>
+                <p>This model is served by an external provider — your input leaves this machine when you run the task.</p>
+                <label class="consent"><input type="checkbox" id="provider-consent"> I understand and want to continue</label>
+              </div>
+            </div>
+
+            <div class="error-banner" id="error-banner" role="alert" hidden>
+              <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4.5M12 17.2v.1"/></svg>
+              <span id="error-message">Something went wrong.</span>
+            </div>
+
+            <div class="run-actions">
+              <button type="submit" class="btn btn-primary" id="run-button" data-busy="false">
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.8v14.4L19 12z" fill="currentColor"/></svg>
+                <span id="run-label">Run</span>
+              </button>
+              <button type="button" class="btn btn-quiet" id="cancel-run" hidden>Cancel</button>
+              <button type="button" class="btn btn-quiet" id="clear-input">Clear</button>
+              <span class="keyboard-hint" id="keyboard-hint">Ctrl + Enter to run</span>
+            </div>
+          </div>
+
+          <section class="panel result-panel" aria-label="Response">
+            <div class="panel-head">
+              <h2 class="panel-title">Response</h2>
+              <div class="tabs tabs-mini" id="result-tabs" role="tablist" aria-label="Result view">
+                <button type="button" class="tab" role="tab" id="result-tab-overview" aria-controls="result-overview" data-result-view="overview" aria-selected="true">Overview</button>
+                <button type="button" class="tab" role="tab" id="result-tab-json" aria-controls="result-json" tabindex="-1" data-result-view="json" aria-selected="false">JSON</button>
+              </div>
+            </div>
+
+            <div class="result-empty" id="result-empty">
+              <svg class="empty-art" viewBox="0 0 280 130" aria-hidden="true" focusable="false">
+                <defs>
+                  <linearGradient id="art-line" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#cfc2ff"/>
+                  </linearGradient>
+                </defs>
+                <path d="M14 98c34-26 52-6 84-28s64-38 168-16" fill="none" stroke="#ddd4c2" stroke-width="1.6" stroke-linecap="round"/>
+                <circle cx="140" cy="64" r="46" fill="none" stroke="url(#art-line)" stroke-width="1.6" opacity=".85"/>
+                <circle cx="140" cy="64" r="29" fill="none" stroke="#c9baff" stroke-width="1.4" opacity=".7"/>
+                <circle cx="140" cy="64" r="4.5" fill="#7c5cff"/>
+                <circle cx="96" cy="30" r="4" fill="#7c5cff" opacity=".8"/>
+                <circle cx="206" cy="88" r="3" fill="#b3a1ff"/>
+                <circle cx="238" cy="38" r="2.4" fill="#d8ceff"/>
+              </svg>
+              <p class="empty-copy">Run a task to see the model's response here.</p>
+            </div>
+
+            <div class="result-content" id="result-content" hidden>
+              <div class="result-head">
+                <span class="result-status" id="result-status">—</span>
+                <span class="result-model" id="result-model">—</span>
+              </div>
+
+              <div class="result-overview" id="result-overview" role="tabpanel" aria-labelledby="result-tab-overview">
+                <div class="result-value" id="result-value"></div>
+                <p class="result-description" id="result-description"></p>
+                <div class="result-confidence-wrap" id="result-confidence-wrap" hidden>
+                  <div class="confidence-head"><span>Confidence</span><span id="confidence-value">—</span></div>
+                  <progress id="confidence-bar" max="100" value="0">0%</progress>
+                </div>
+                <pre class="result-text" id="result-text" hidden></pre>
+                <audio id="audio-result" controls hidden></audio>
+                <a class="btn btn-quiet" id="audio-download" href="#" hidden>Save audio</a>
+              </div>
+
+              <pre class="result-json" id="result-json" role="tabpanel" aria-labelledby="result-tab-json" hidden></pre>
+
+              <p class="truncated-notice" id="truncated-notice" hidden>Input was truncated to the model's token limit. The result covers only the processed portion.</p>
+
+              <div class="result-actions">
+                <button type="button" class="btn btn-quiet" id="copy-result" disabled>Copy JSON</button>
+                <button type="button" class="btn btn-quiet" id="download-result" disabled>Download</button>
+              </div>
+
+              <dl class="metrics">
+                <div><dt>Latency</dt><dd id="metric-latency">—</dd></div>
+                <div><dt>Tokens</dt><dd id="metric-tokens">—</dd></div>
+                <div><dt>Round trip</dt><dd id="metric-roundtrip">—</dd></div>
+              </dl>
+            </div>
+          </section>
+        </form>
+      </section>
+
+      <section class="view" id="view-models" hidden aria-label="Model catalog">
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Model catalog</h2>
+            <p class="catalog-summary" id="catalog-summary">Waiting for the service to report its catalog.</p>
+          </div>
+          <div class="catalog-grid" id="catalog-grid"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-runs" hidden aria-label="Session runs">
+        <div class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Session runs</h2>
+            <button type="button" class="btn btn-quiet" id="clear-runs">Clear history</button>
+          </div>
+          <p class="runs-empty" id="runs-empty">No runs yet in this browser session — completed requests will be listed here.</p>
+          <ol class="runs-list" id="runs-list"></ol>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-title">
+    <form class="auth-form" id="auth-form">
+      <h2 class="auth-title" id="auth-title">Session access</h2>
+      <p class="auth-note">Paste the access key for this studio. It is kept in memory for this session only and is never written to disk.</p>
+      <label class="field-label" for="api-key">API key</label>
+      <input type="password" id="api-key" autocomplete="off" spellcheck="false" placeholder="Paste your key">
+      <p class="auth-error" id="auth-error" role="alert" hidden>The key was rejected — check it and try again.</p>
+      <div class="auth-actions">
+        <button type="submit" class="btn btn-primary" id="auth-save">Save key</button>
+        <button type="button" class="btn btn-quiet" id="auth-cancel">Cancel</button>
+        <button type="button" class="btn btn-quiet" id="auth-clear">Clear key</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

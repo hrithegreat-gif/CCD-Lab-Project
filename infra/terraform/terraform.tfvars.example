@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. NEVER put secrets in tfvars.
+# All defaults below match variables.tf; uncomment only what you change.
+
+project_prefix       = "ccd-lab"
+ssm_parameter_prefix = "/ccd-lab"
+
+# Budget alerting (alert-only; delayed; never a hard cap):
+# budget_limit = 100
+# budget_email = "you@example.com"
+
+# GitHub OIDC: keep create_oidc_provider = false and pass the existing provider
+# ARN (find it with: aws iam list-open-id-connect-providers). Only set
+# create_oidc_provider = true if the account has NO provider for
+# token.actions.githubusercontent.com yet.
+# create_oidc_provider     = true
+# github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+
+# Optional tuning (defaults shown):
+# instance_type              = "m7i-flex.large"
+# root_volume_size           = 40
+# autostop_hours             = 4
+# k3s_version                = "v1.37.1+k3s1"
+# artifact_retention_days    = 30
+# log_retention_days         = 7
+# artifact_bucket_force_destroy = false

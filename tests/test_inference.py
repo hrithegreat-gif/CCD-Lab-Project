@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.config import Settings
-from app.inference import InferenceTimeout
+from app.inference import InferenceTimeout, Prediction
 from app.main import create_app
 from tests.conftest import TestModel
 
@@ -75,3 +75,31 @@ def test_validation_does_not_echo_input(client):
     response = client.post("/api/inference", json={"model": "sentiment", "input": private})
     assert response.status_code == 422
     assert private not in response.text
+
+
+def test_inference_slot_held_for_the_whole_native_prediction(monkeypatch):
+    """Capacity must stay acquired while the (native) predict call runs."""
+    application = create_app(
+        Settings(_env_file=None, max_concurrent_inferences=1), model_factory=TestModel
+    )
+    with TestClient(application) as client:
+        model = application.state.models["sentiment"]
+        observed = {}
+
+        def spy(_text):
+            # While the native call runs, no other slot may be available.
+            probe = application.state.slots.acquire(blocking=False)
+            observed["held"] = not probe
+            if probe:
+                application.state.slots.release()
+            return Prediction("positive", 0.8, 8, False)
+
+        monkeypatch.setattr(model, "predict", spy)
+        response = client.post(
+            "/api/inference", json={"model": "sentiment", "input": "hello"}
+        )
+        assert response.status_code == 200
+        assert observed["held"] is True
+        # After the request completes the slot is released again.
+        assert application.state.slots.acquire(blocking=False)
+        application.state.slots.release()

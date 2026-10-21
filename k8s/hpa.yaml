@@ -1,2 +1,49 @@
-# Phase 4 placeholder: autoscaling/v2 CPU HPA for ai-model-serving.
-# Tune target utilization, replica bounds and stabilization to measured capacity.
+# CPU-based autoscaling (autoscaling/v2). Requires Metrics Server, which the
+# k3s bootstrap enables; verify with `kubectl top nodes` before trusting the
+# HPA. Resource requests define the utilization denominator (500m per Pod).
+#
+# Conservative behavior for a single 2 vCPU node: at most one Pod is added or
+# removed per minute, and scale-in waits 5 minutes of low load so rolling
+# experiments and short spikes do not flap. maxReplicas 3 fits the node on
+# REQUESTS: 3 * (500m cpu / 512Mi memory) plus k3s system overhead stays inside
+# 2 vCPU / 8 GiB. Limits over-commit CPU via time slicing and add no compute;
+# additional replicas never make the node faster.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-model-serving
+  namespace: ai-serving
+  labels:
+    app.kubernetes.io/name: ai-model-serving
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-model-serving
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleDown:
+      # Absorb short dips; the 300s window also matches the documented
+      # scale-in observation wait after load stops.
+      stabilizationWindowSeconds: 300
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

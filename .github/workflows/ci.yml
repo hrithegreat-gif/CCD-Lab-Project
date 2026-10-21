@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Real sentiment tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install pinned dev requirements
+        run: python -m pip install -r requirements-dev.txt
+      - name: pip check
+        run: python -m pip check
+      - name: Prepare pinned model assets and verify real predictions
+        run: python scripts/prepare_model.py --verify
+      - name: Run all real sentiment tests (includes integration)
+        run: python -m pytest tests/ -v
+
+  manifests:
+    name: Manifest and script validation (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install YAML test dependency only
+        run: python -m pip install PyYAML==6.0.3 pytest==8.3.5
+      # --noconftest: tests/conftest.py imports FastAPI/onnxruntime, which this
+      # job does not install; tests/test_manifests.py is self-contained.
+      - name: Validate Kubernetes/Docker/loadtest artifacts offline
+        run: python -m pytest tests/test_manifests.py -v --noconftest -p no:cacheprovider
+      - name: Render check (core manifests)
+        run: |
+          python scripts/render_k8s.py --image ci-render-check:deadbeef \
+            --pull-secret ecr-pull --output /tmp/rendered-cloud.yaml
+          grep -q "ci-render-check:deadbeef" /tmp/rendered-cloud.yaml
+          python scripts/render_k8s.py --image ai-model-serving:dev \
+            --pull-secret none --output /tmp/rendered-local.yaml
+          ! grep -q "imagePullSecrets" /tmp/rendered-local.yaml
+      - name: Shell and JS syntax checks
+        run: |
+          bash -n scripts/deploy-k3s.sh
+          bash -n scripts/entrypoint.sh
+          cp loadtest/k6-script.js /tmp/k6-script.mjs
+          node --check /tmp/k6-script.mjs
+
+  docker:
+    name: Docker build and container smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build --no-cache -t ai-model-serving-ci:${GITHUB_SHA} .
+      - name: Start container in hardened mode (mirrors the k8s runtime)
+        run: |
+          docker run -d --name ccd-smoke -p 127.0.0.1:8000:8000 \
+            --read-only \
+            --cap-drop=ALL \
+            --security-opt no-new-privileges \
+            --memory 1g \
+            --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=10001,gid=10001 \
+            --tmpfs /cache:rw,noexec,nosuid,size=256m,uid=10001,gid=10001 \
+            -e MODEL_CACHE_DIR=/cache \
+            -e MODEL_LOCAL_FILES_ONLY=true \
+            -e BACKGROUND_MODEL_LOAD=true \
+            -e MAX_REQUEST_BYTES=65536 \
+            -e API_KEY= \
+            ai-model-serving-ci:${GITHUB_SHA}
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 5 http://127.0.0.1:8000/health/ready; then
+              echo; exit 0
+            fi
+            sleep 5
+          done
+          echo "container never became ready" >&2
+          docker logs ccd-smoke >&2 || true
+          exit 1
+      - name: Non-root verification
+        run: |
+          UID_VALUE=$(docker exec ccd-smoke id -u)
+          echo "container uid: $UID_VALUE"
+          [ "$UID_VALUE" = "10001" ]
+      - name: Real HTTP smoke test against the container
+        run: python scripts/smoke_test.py --base-url http://127.0.0.1:8000
+      - name: Liveness and metrics endpoint checks
+        run: |
+          curl -fsS http://127.0.0.1:8000/health/live
+          echo
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/metrics)
+          echo "/metrics status: $STATUS"
+          [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ]
+      - name: Container logs
+        if: always()
+        run: docker logs ccd-smoke 2>&1 | tail -40 || true
+      - name: Remove container
+        if: always()
+        run: docker rm -f ccd-smoke || true
+
+  terraform:
+    name: Terraform formatting, validation and offline policy tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.15.8'
+      - name: Check formatting
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+      - name: Init without backend (no credentials needed)
+        run: terraform -chdir=infra/terraform init -backend=false -input=false
+      - name: Validate
+        run: terraform -chdir=infra/terraform validate
+      - name: Offline semantic policy and bootstrap regressions (mock providers)
+        env:
+          AWS_EC2_METADATA_DISABLED: 'true'
+        run: terraform -chdir=infra/terraform test -no-color
+      - name: Exercise safe and unsafe deployment bundles (stubbed AWS CLI)
+        run: bash infra/terraform/tests/deploy_doc_safety_test.sh
+
+  frontend:
+    name: Studio contract tests (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check browser module syntax
+        run: |
+          node --check app/static/studio-core.mjs
+          node --check app/static/studio.mjs
+      - name: Test studio API contracts without model or provider calls
+        run: node --test tests/frontend/studio-core.test.mjs
+
+  ci-success:
+    name: CI gate
+    needs: [tests, manifests, docker, terraform, frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All CI jobs passed
+        run: |
+          echo "tests=${{ needs.tests.result }} manifests=${{ needs.manifests.result }} docker=${{ needs.docker.result }} terraform=${{ needs.terraform.result }} frontend=${{ needs.frontend.result }}"
+          if [ "${{ needs.tests.result }}" != "success" ] \
+             || [ "${{ needs.manifests.result }}" != "success" ] \
+             || [ "${{ needs.docker.result }}" != "success" ] \
+             || [ "${{ needs.terraform.result }}" != "success" ] \
+             || [ "${{ needs.frontend.result }}" != "success" ]; then
+            exit 1
+          fi

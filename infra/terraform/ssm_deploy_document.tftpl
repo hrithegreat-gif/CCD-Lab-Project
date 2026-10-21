@@ -1,0 +1,104 @@
+# set -euo pipefail, deliberately WITHOUT -x: the deploy pipeline may handle
+# secrets; command tracing would echo expanded values into command output.
+set -euo pipefail
+export AWS_DEFAULT_REGION="${aws_region}"
+export AWS_REGION="${aws_region}"
+export SSM_PARAMETER_PREFIX="${ssm_parameter_prefix}"
+export ECR_REPOSITORY="${ecr_repository}"
+export ARTIFACT_BUCKET="${artifact_bucket}"
+
+BUNDLE_TAR=/opt/ccd-lab/incoming-bundle.tar.gz
+BUNDLE_ROOT=/opt/ccd-lab/deploy-bundles
+LIST="$BUNDLE_ROOT/.bundle-listing.txt"
+
+# Per-commit work dir, derived ONLY from the document's pattern-validated
+# ObjectKey; enforce hex-40 defense-in-depth before any rm -rf below.
+BASE="$(basename "{{ ObjectKey }}" .tar.gz)"
+case "$BASE" in
+  *[^0-9a-f]* | "")
+    echo "REFUSING: unexpected bundle name" >&2
+    exit 2
+    ;;
+esac
+if [ "$${#BASE}" -ne 40 ]; then
+  echo "REFUSING: bundle name is not a 40-hex commit SHA" >&2
+  exit 2
+fi
+WORK="$BUNDLE_ROOT/$BASE"
+
+install -d -m 0755 "$BUNDLE_ROOT"
+if [ -L "$WORK" ]; then
+  echo "REFUSING: work path is a symlink" >&2
+  exit 2
+fi
+rm -rf -- "$WORK"
+
+aws s3 cp "s3://$ARTIFACT_BUCKET/{{ ObjectKey }}" "$BUNDLE_TAR" --no-progress
+
+# Verify bundle integrity BEFORE extraction.
+echo "{{ BundleSha256 }}  $BUNDLE_TAR" | sha256sum -c -
+
+# Two-pass safety screening, fail-closed, no pipes (a listing written to a file
+# cannot be truncated by SIGPIPE; tar failure and grep results are checked
+# separately: only a clean "no match" (rc 1) may proceed).
+# Pass 1: archive integrity + entry names (absolute paths / '..' traversal).
+if ! tar -tzf "$BUNDLE_TAR" > "$LIST"; then
+  rm -f -- "$LIST" "$BUNDLE_TAR"
+  echo "REFUSING: unreadable or corrupt bundle" >&2
+  exit 2
+fi
+rc=0
+grep -E '(^|/)\.\.(/|$)|^/' "$LIST" >/dev/null || rc=$?
+if [ "$rc" -ne 1 ]; then
+  rm -f -- "$LIST" "$BUNDLE_TAR"
+  echo "REFUSING to extract: unsafe paths in bundle" >&2
+  exit 2
+fi
+# Pass 2: entry types — reject symlinks (l), hardlinks (h), devices (b/c), fifos (p).
+if ! tar -tvzf "$BUNDLE_TAR" > "$LIST"; then
+  rm -f -- "$LIST" "$BUNDLE_TAR"
+  echo "REFUSING: unreadable or corrupt bundle" >&2
+  exit 2
+fi
+rc=0
+grep -E '^[lhbcp]' "$LIST" >/dev/null || rc=$?
+if [ "$rc" -ne 1 ]; then
+  rm -f -- "$LIST" "$BUNDLE_TAR"
+  echo "REFUSING to extract: symlink/hardlink/device entries in bundle" >&2
+  exit 2
+fi
+rm -f -- "$LIST"
+
+install -d -m 0750 "$WORK"
+tar -xzf "$BUNDLE_TAR" -C "$WORK" --no-same-owner --no-same-permissions
+rm -f -- "$BUNDLE_TAR"
+
+install -d -m 0750 "$WORK/results"
+printf '%s\n' \
+  "object_key={{ ObjectKey }}" \
+  "bundle_sha256={{ BundleSha256 }}" \
+  "image_uri={{ ImageUri }}" \
+  "result_prefix=results/$BASE/" \
+  "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$WORK/results/deploy-summary.txt"
+
+# Best-effort failure artifacts: on any later failure, append the status and
+# sync whatever results exist to the per-commit prefix, then PRESERVE the
+# original exit code.
+finish() {
+  rc=$?
+  if [ "$rc" -ne 0 ] && [ -d "$WORK/results" ]; then
+    printf '%s\n' "status=failed" "exit_code=$rc" "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      >> "$WORK/results/deploy-summary.txt" 2>/dev/null || true
+    aws s3 sync "$WORK/results" "s3://$ARTIFACT_BUCKET/results/$BASE/" --no-progress || true
+  fi
+  exit "$rc"
+}
+trap finish EXIT
+
+cd "$WORK"
+bash scripts/deploy-k3s.sh --image "{{ ImageUri }}"
+
+printf '%s\n' "status=success" "finished_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$WORK/results/deploy-summary.txt"
+aws s3 sync "$WORK/results" "s3://$ARTIFACT_BUCKET/results/$BASE/" --no-progress
+echo "ccd-lab deploy pipeline completed from {{ ObjectKey }} -> results/$BASE/"

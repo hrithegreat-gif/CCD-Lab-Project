@@ -1,12 +1,38 @@
+# Keep the build context minimal: the image needs app/, requirements.txt and
+# scripts/entrypoint.sh only. Host model caches, secrets and local results
+# must never enter the image.
+*
+
+# Runtime sources the image is built from
+!app
+!app/**
+!requirements.txt
+!scripts
+!scripts/entrypoint.sh
+!models
+models/*
+!models/NOTICE.md
+!models/LICENSE-APACHE-2.0.txt
+
+# Defensive re-exclusions: never ship local state, secrets or caches even if
+# directory names change. Later rules win over earlier ones.
 .git
 .github
-.venv
-venv
-**/__pycache__
-.pytest_cache
 .env
 .env.*
-!.env.example
 models/cache
+models/artifacts
 results
+deploy
+infra
+docs
+tests
+k8s
+loadtest
+__pycache__
+**/__pycache__
+*.py[cod]
+.venv
+venv
+.pytest_cache
 *.log
