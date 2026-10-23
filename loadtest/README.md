@@ -1,5 +1,10 @@
 # Load testing
 
+For the implemented local runner, three-repeat workflow, analysis commands and
+acceptance criteria, follow [Phase 3](../docs/PHASE_3.md). It uses an explicit
+context and matching kubectl, preserves unique raw run folders, and waits for
+idle recovery between runs.
+
 Real, bounded k6 benchmark for the deployed service. Nothing in this directory
 produces performance numbers by itself; results exist only after a measured run
 and are recorded manually in results/performance.csv (or under results/raw/,
@@ -21,8 +26,9 @@ which is git-ignored).
 | baseline | 30s | 2 | one-replica capacity (2 inference slots) |
 | sustained | default 180s, cap 600s | default 8, cap 32 | drive CPU toward the HPA target |
 
-Think time is 0 by default so sustained load can saturate CPU and trigger the
-HPA; set `LOADTEST_THINK_TIME_MS` (cap 1000) for gentler runs. 429 responses
+Warm-up and baseline now pause 100 ms between requests per virtual user. Sustained
+think time is 0 by default so load can saturate CPU and trigger the
+HPA; set `LOADTEST_THINK_TIME_MS` (cap 1000) for gentler sustained runs. 429 responses
 are expected under saturation and are counted separately; `http_req_failed`
 only counts real failures (threshold `rate<0.05`).
 
@@ -102,19 +108,19 @@ scale-in observation is cut short:
     # 15 + 30 + 180 + 300 + margin:
     python scripts/record_scaling.py --duration 660 --interval 5
 
-Writes one JSON sample per line (HPA replicas, ready counts, per-Pod CPU/mem
+Use `--kubectl <matching-client-path> --context ai-serving-local` for this local
+cluster. Existing output files are refused to prevent accidentally concatenating
+different experiments. Writes one JSON sample per line (HPA replicas, ready counts, per-Pod CPU/mem
 from Metrics Server) to results/raw/scaling-<timestamp>.jsonl.
 
 ## Documenting results
 
-After a real run: copy the k6 `summary.json` (from `kubectl cp` or stdout) and
-the scaling JSONL into results/raw/, then add one row to
-results/performance.csv with scenario, hardware, k8s version, model revision,
-image tag, concurrency, duration, throughput, mean/p95 latency, error and 429
-rates, and replica observations. Use the per-phase summary values
-(`phases.sustained.successful_throughput_rps`, sustained latency percentiles)
-for the sustained scenario — not warmup-polluted aggregates. The documented
-scale experiment is the default 180s sustained load plus the 300s scale-in
-stabilization window (660s recording, see above) to demonstrate both
-scale-out and scale-in. Do not fill the CSV from a single short run or from
-estimates.
+Use the [Phase 3 runner and analyzer](../docs/PHASE_3.md) to preserve k6 stdout,
+phase timing, resource samples and source provenance automatically. Completed
+containers do not support reliable `kubectl cp`; the runner parses the summary
+from retained Job logs. It produces separate baseline, sustained and recovery
+rows in `results/performance.csv`, with figures and compact evidence.
+
+Use per-phase successful throughput and latency, excluding warm-up and fast
+rejections. Recovery has no generated requests. The executed local experiments
+and their limitations are in [results/ANALYSIS.md](../results/ANALYSIS.md).

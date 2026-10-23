@@ -13,6 +13,62 @@ For a uv-based setup without a system Python registration, use the [README](../R
 
 ## Windows PowerShell
 
+### Recommended recovery and repeatable setup
+
+From the repository root, run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/setup-phase1.ps1
+```
+
+This uses `uv` to install Python 3.12 under `.validation/python`, uses a writable
+project cache, and installs/checks dependencies in `.venv-review`. Both directories
+are ignored by Git. The command's execution policy applies only to this child
+process; it does not change the machine/user policy. The script does not register
+Python globally. It preserves the old `.venv` and any existing `.env`, and stops
+on installation/check failures. The initial setup needs internet access. Do not
+move the project and assume the virtual environment remains portable; inspect or
+recreate the environment if its interpreter path changes.
+
+Prepare and test the real model (optional adapters stay disabled):
+
+```powershell
+$env:MODEL_CACHE_DIR = Join-Path (Get-Location) 'models/cache'
+$env:MODEL_LOCAL_FILES_ONLY = 'false'
+$env:API_KEY = ''
+$env:ENABLE_QWEN = 'false'
+$env:ENABLE_KITTEN = 'false'
+$env:ENABLE_GROQ = 'false'
+$env:ENABLE_GROQ_TRANSCRIPTION = 'false'
+& ./.venv-review/Scripts/python.exe scripts/prepare_model.py --verify
+# Continue only if preparation succeeds.
+$env:MODEL_LOCAL_FILES_ONLY = 'true'
+& ./.venv-review/Scripts/python.exe -m pytest tests/ -q -p no:cacheprovider
+node --test tests/frontend/studio-core.test.mjs
+```
+
+For authenticated local acceptance, start the server in terminal A:
+
+```powershell
+$env:API_KEY = 'local-review-only'
+& ./.venv-review/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+```
+
+In terminal B, from the same repository directory:
+
+```powershell
+$env:API_KEY = 'local-review-only'
+& ./.venv-review/Scripts/python.exe scripts/smoke_test.py
+```
+
+The key above is disposable local test data. Open `http://127.0.0.1:8000/`, enter
+it through Session access, and verify positive/negative predictions. Stop the
+server with Ctrl+C after testing. The smoke script must finish with its PASS
+message; failed preparation, skipped integration tests or 503 readiness do not
+meet Phase 1 acceptance. Check `$LASTEXITCODE` after each native command.
+
+### Alternative with an existing system Python
+
 Extract the archive to a new location and open a terminal in its
 ai-model-serving-platform folder. For an existing scaffold, merge the extracted
 files into it; preserve your own .env and local notes. Avoid nesting project folders.

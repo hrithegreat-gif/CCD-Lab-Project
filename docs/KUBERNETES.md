@@ -1,4 +1,13 @@
-# Kubernetes deployment (self-managed k3s)
+# Kubernetes deployment
+
+The primary local path is [Phase 2: Minikube on Docker](PHASE_2.md). It includes
+checksum-verified tool installation, hardened container acceptance, image import,
+namespace/secret setup, real Service inference, and Metrics Server verification.
+Use Minikube's version-matched kubectl; an older globally installed client may
+be outside the supported version skew. The EC2/k3s instructions below describe
+the separate optional cloud target, not evidence of an executed cloud deployment.
+
+## Optional self-managed k3s on EC2
 
 CPU-only serving lab: one x86 Linux EC2 instance (`m7i-flex.large`, 2 vCPU /
 8 GiB), self-managed k3s (bootstrap pins `v1.37.1+k3s1`, Metrics Server 0.9.0,
@@ -46,16 +55,20 @@ Never commit Secret manifests; tests/test_manifests.py asserts none exist.
 
 ## Local image loading (no registry)
 
-    docker build -t ai-model-serving:dev .
-    python scripts/render_k8s.py --image ai-model-serving:dev \
-        --pull-secret none --output .validation/rendered-local.yaml
-    kubectl apply -f .validation/rendered-local.yaml
+PowerShell, after the tool installation in [PHASE_2.md](PHASE_2.md):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-container.ps1
+$env:API_KEY = 'local-review-only'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-local.ps1
+```
 
 `imagePullSecrets` is only injected when render runs with `--pull-secret`;
-local clusters load the image into the node instead. A local cluster needs
-Docker (kind/k3d) or a Linux host — Docker was unavailable on the dev machine,
-so local cluster verification is documented but NOT yet executed; the verified
-execution path is the EC2 k3s deployment below.
+local clusters load the image into the node instead. The deployment helper imports
+the built image explicitly into the dedicated Minikube profile. See
+[PHASE_2.md](PHASE_2.md) for the complete local image-import and verification
+procedure. The EC2 k3s deployment below is a prepared optional path, not a claim
+of verified AWS deployment. See [VERIFICATION.md](VERIFICATION.md) for evidence.
 
 ## Deployment on the instance (scripts/deploy-k3s.sh)
 

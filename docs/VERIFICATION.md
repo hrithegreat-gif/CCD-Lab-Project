@@ -1,5 +1,142 @@
 # Verification ledger
 
+## Phase 4 delivery verification on 23 October 2026
+
+Local final checks: **296 Python tests passed without skips** (10.58 s),
+**81 frontend tests passed**, and cleanup guard behavioral checks passed.
+The authenticated in-cluster Service smoke passed with real positive/negative
+predictions, auth rejection, validation and metrics. Namespace cleanup preview
+and deletion succeeded with the matching kubectl; the namespace absence check
+returned no resources. Phase 3 evidence was preserved before deleting its Jobs.
+
+Added [the Phase 4 guide](PHASE_4.md), [timed demo](DEMO.md) and
+[final report](FINAL_REPORT.md). CI now includes experiment tests and PowerShell
+cleanup guards. Hosted CI for the delivered review branch is pending until its
+actual run completes; local tests do not establish that gate. Team attribution
+is explicitly unassigned pending team confirmation. Optional extensions remain
+deferred, and no AWS workflow was dispatched.
+
+## Phase 3 measurements and final verification on 23 October 2026
+
+**Phase 3 passed locally.** Three sequential experiments executed on 22 October
+with unchanged HPA settings; each observed one, then three, then one ready
+serving replica. Analysis was finalized on 23 October. See the
+[report](../results/ANALYSIS.md), [CSV](../results/performance.csv) and
+[manual verification guide](PHASE_3.md).
+
+| Check | Actual result |
+| --- | --- |
+| Three bounded k6 Jobs | All completed successfully; original summaries and source snapshots preserved |
+| Baseline | 17.533?17.600 successful rps; p95 15 ms |
+| Sustained load | 104.000?117.239 successful rps; p95 96?99 ms; roughly 57?59% HTTP 429 |
+| Ready scale-out | First additional ready Pod 70.732?84.360 s after sustained start |
+| Recovery | First scale-in 350.768?364.404 s; return to one 410.775?424.405 s after traffic ends |
+| Restarts/errors | Zero recorded serving-Pod restarts, completed 5xx or invalid-200 responses; boundary interruptions retained separately |
+| Resource evidence | Sustained complete samples only 14/36, 16/36, 16/36; missing values and window lag explicitly disclosed |
+| Full Python suite | **296 passed, no skips**, 11.31 s; includes real offline ONNX integration and five new experiment tests |
+| CSV/report/plots | Nine measured rows, three scaling/resource figures and hash-linked compact evidence |
+| Final cluster check | One ready serving Pod, zero restarts, HPA CPU 0%/70%; all three Jobs Complete |
+
+The experiment snapshots predate two reporting fixes: aggregate attempts now
+include interrupted requests, and the recorder reads the HPA target from spec.
+Analysis uses the already-correct per-phase counters and captured HPA spec;
+original measurements were not rewritten. Tests cover both corrections.
+The CSV schema check now handles quoted commas in measured notes.
+
+No fixed-replica high-load control was run, so this does not isolate a causal
+throughput gain from autoscaling. Resource means use incomplete, windowed
+retrieval-time observations and are not precise phase utilization estimates.
+Hosted CI, final demonstration/cleanup acceptance and optional cloud/provider
+execution remain outside this completed phase. Older unexecuted-performance
+claims below describe earlier verification states and are superseded here.
+
+## Phase 2 container and Kubernetes acceptance on 22 October 2026
+
+**Phase 2 passed locally.** Docker Desktop was started, Minikube was installed
+under `.validation/tools`, and the dedicated `ai-serving-local` cluster was
+created. No AWS resources, paid providers, hosted CI or load benchmarks were used.
+
+| Check | Actual result | Scope |
+| --- | --- | --- |
+| Minikube download | v1.39.0, published SHA-256 matched | `776386465ded2cf610ae397fe302de32c44d12134b5ce7ce98ab05bd7713b360` |
+| Docker build | Initial `--no-cache` build passed; corrected entrypoint rebuilt successfully | Docker Linux engine 29.2.1; baked immutable ONNX model verified at build time |
+| Hardened container | Real authenticated smoke, UID 10001 and `pip check` passed | Read-only root, dropped capabilities, 1 CPU/1 GiB, root-owned group-writable cache; temporary containers removed |
+| Local cluster | Minikube v1.39.0, Kubernetes v1.37.0, containerd 2.3.4 | Requested Docker node limits 4 CPUs/6144 MiB, confirmed as 4,000,000,000 NanoCPUs and 6,442,450,944 bytes |
+| Image import and rollout | Passed | Namespace/Secret ordering, rendered manifests, offline baked model, ready Pod |
+| Service port-forward smoke | Passed | Real predictions, auth rejection, metadata, 404/422 validation and metrics |
+| In-cluster DNS/Service smoke | Passed | Full smoke script piped into Pod, targeting `ai-model-serving.ai-serving.svc.cluster.local:8000` |
+| Metrics Server | v0.9.0 ready; node and Pod resource readings returned | Observed fixed-image Pod at 9m CPU/180Mi memory; point-in-time observations, not a benchmark |
+| HPA | `ScalingActive=True`, `ValidMetricFound`, CPU 1%/70%, one replica | Metrics availability only; no scale-out/in experiment performed |
+| Fixed-image rollout recovery | Passed again after explicit restart, zero restarts | Replacement Pod ready and full in-cluster real-inference smoke passed |
+| Follow-up stability check | Same replacement Pod still `1/1 Running`, zero restarts at approximately 8 hours | HPA CPU 0%/70%, Pod snapshot 3m CPU/178Mi memory; idle observations only |
+| Manifest/workflow checks | 54 passed in 1.20 s | Includes regression guard for Kubernetes-like cache ownership in both CI smoke workflows |
+| PowerShell helper syntax | Passed | Installer, container acceptance and local deployment scripts |
+
+Final corrected image manifest-list identity:
+`sha256:65069a3d824af1e2eafa2c03f9a8381a1aa9aee088a58276a08bbd37081a10f4`.
+The initial clean build was followed by a rebuild of the entrypoint-dependent
+layers after fixing the live deployment bug; the final hardened smoke and
+Kubernetes checks used the corrected image.
+
+### Defect found and corrected
+
+The original `cp -a` cache copy tried to preserve timestamps on the root-owned
+`emptyDir` mount. Each new Pod initially exited with `Operation not permitted`,
+then retried successfully because the completion marker had already been copied.
+The entrypoint now copies entries without archive metadata and writes the marker
+only after all copies succeed. Two fixed-image Pods were verified ready with
+zero restarts. The container helper and both CI smoke workflows now use a
+root-owned, group-writable cache mount to expose this regression. The local
+deployment helper also rejects startup restarts even when a retry becomes ready.
+
+### Capacity and evidence limits
+
+Kubernetes reported node allocatable capacity as 16 CPUs and 12,087,488 KiB RAM,
+despite Docker enforcing a 4-CPU/6-GiB node-container limit. Use the enforced
+limits when interpreting Phase 3 capacity; `kubectl top nodes` percentages alone
+can misrepresent available compute in this nested setup. Initial HPA unknown
+metrics resolved after fresh Pod samples were collected; they were not counted
+as successful readings.
+
+Sanitized node/Pod/HPA JSON and image identity are kept under ignored
+`.validation/phase2/`. Temporary port forwards were stopped after acceptance.
+The dedicated cluster remains available for manual testing; stop it with the
+command in [PHASE_2.md](PHASE_2.md) when finished. The old records below describe
+earlier states and do not supersede this acceptance. Formal scaling experiments,
+performance rows, hosted CI and optional AWS/provider acceptance remain pending.
+
+## Phase 1 revalidation on 21 October 2026
+
+The local runtime gate now passes in `.venv-review` using project-local Python
+3.12.14. The original `.venv` was left untouched because it references a missing
+system interpreter. `scripts/setup-phase1.ps1` creates the replacement using
+ignored `.validation/python` and `.validation/uv-cache` directories. Its final
+form was rerun successfully offline; it installs no global Python registry/bin
+entries and preserves `.env`. PowerShell's script policy required a child-process
+execution-policy option, documented in `PHASE_1.md`; no persistent policy changed.
+
+| Check | Actual result | Scope |
+| --- | --- | --- |
+| Dependency metadata before browser tooling | 42 distributions, 91 active requirements; all baseline/dev pins match | Fresh declared requirements installation |
+| Pinned model preparation, offline | Passed; 68,293,328 asset bytes; positive and negative labels verified | Actual cached ONNX weights, immutable registry revision |
+| Full Python suite | **291 passed in 11.39 s**, no skips | Includes real-model integration and controlled fault/extension tests |
+| Frontend contract suite | **81 passed**, no failures/skips | Node v24.14.0 |
+| Authenticated live HTTP smoke | Passed on loopback port 8883 | Health, metadata, rejected unauthenticated request, real positive/negative predictions, 404/422 errors, metrics |
+| Studio/OpenAPI HTTP | Both returned usable responses | Studio HTTP 200 and expected API title |
+| Edge browser acceptance | **22 checks passed**, Playwright 1.58.0 | Real sentiment desktop/mobile/truncation; optional provider/auth/error cases remain HTTP fixtures |
+| Visual inspection | Desktop and 390px mobile screenshots inspected | Real successful inference visible, no page overflow observed |
+| Final setup rerun, offline | Passed; 45 distributions, 94 active requirements | Includes optional browser test tooling; all baseline/dev pins still match |
+
+Browser evidence is in ignored `.validation/phase1-browser/` (screenshots and
+`browser-checks.json`). Optional Playwright tooling was installed only in the
+local environment; production requirements were not changed. No application
+logic changes were needed. Single-request timings remain functional observations,
+not benchmarks. Temporary HTTP servers were stopped after validation.
+
+Docker, Kubernetes, HPA experiments, hosted CI, optional real model/providers,
+AWS and performance measurements remain outside this completed Phase 1 gate.
+The older records below are retained as history, not fresh measurements.
+
 Checked on **2026-10-13 (Asia/Kolkata)** in the user's working tree. This
 supersedes the earlier 32-test Phase 1 record. These are local checks, **not**
 a GitHub Actions run, successful AWS deployment, or performance benchmark.

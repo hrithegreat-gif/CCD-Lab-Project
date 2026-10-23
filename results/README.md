@@ -1,6 +1,13 @@
 # Measured results and evidence
 
-No formal container/Kubernetes/EC2 performance experiment has run yet. The [performance CSV](performance.csv) is intentionally header-only. Local real-model smoke checks and unit tests are functional evidence, not load benchmarks; see the [verification ledger](../docs/VERIFICATION.md).
+Three local Minikube experiments are now recorded in [ANALYSIS.md](ANALYSIS.md),
+with nine measured rows in [performance.csv](performance.csv), scaling plots and
+compact evidence under `results/evidence/phase3-20261022/`. Each run demonstrated
+1 ? 3 ? 1 ready replicas. The report explicitly includes overload rejections,
+interrupted attempts and incomplete/windowed resource metrics. These are local
+measurements, not EC2 results or proof of hosted CI.
+
+Follow [the Phase 3 guide](../docs/PHASE_3.md) to reproduce the experiments.
 
 For each real experiment, preserve:
 

@@ -1,0 +1,5 @@
+{
+  "start_epoch": 1792678932.784,
+  "start_source": "k6 setup log",
+  "phase_boundary_uncertainty": "setup-return overhead plus resource sample interval"
+}

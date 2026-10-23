@@ -1,5 +1,35 @@
 # Development and deployment environments
 
+## Phase 2 refresh on 22 October 2026
+
+- Docker Desktop Linux engine: 29.2.1; clean build and hardened smoke executed.
+- Project-local Minikube: v1.39.0, checksum verified; profile `ai-serving-local`.
+- Kubernetes: v1.37.0; containerd 2.3.4; Metrics Server v0.9.0.
+- Docker node-container limits: 4 CPUs and 6 GiB; Kubernetes reports the larger
+  WSL host capacity (16 CPUs, 12,087,488 KiB). Record both for experiments.
+- Global kubectl v1.34.1 is too old for this cluster. Use Minikube's matching
+  client as shown in [PHASE_2.md](PHASE_2.md); deployment helpers do this already.
+- Image tag: `ai-model-serving:phase2`; actual digest and checks are in
+  [VERIFICATION.md](VERIFICATION.md).
+- Local cluster is available for testing. Port forwards and disposable smoke
+  containers have been cleaned up; Docker Desktop remains running.
+
+## Phase 1 refresh on 21 October 2026
+
+- Windows platform reported by Python: `Windows-11-10.0.26200-SP0`.
+- Python 3.12.14 now runs from `.venv-review`, backed by the project's ignored
+  `.validation/python` installation; the original broken `.venv` is preserved.
+- uv: 0.12.5. Cache: `.validation/uv-cache`.
+- Node: v24.14.0. Browser acceptance used installed Microsoft Edge with
+  Playwright 1.58.0 in the local test environment.
+- The pinned model cache works offline; model assets total 68,293,328 bytes.
+- CPU/RAM CIM queries were denied in the execution environment, so the older
+  hardware figures below were not remeasured.
+- Run `scripts/setup-phase1.ps1` as documented in [PHASE_1.md](PHASE_1.md).
+  [VERIFICATION.md](VERIFICATION.md) records the fresh passing acceptance checks.
+
+The remaining table is the older environment record; versions there are historical.
+
 Recorded 2026-10-13 on the Windows validation host. These are not EC2 or container measurements.
 
 | Field | Observed value |

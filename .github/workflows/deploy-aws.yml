@@ -76,7 +76,7 @@ jobs:
             --memory 1g \
             --cpus 1 \
             --tmpfs /tmp:rw,noexec,nosuid,size=32m,uid=10001,gid=10001 \
-            --tmpfs /cache:rw,noexec,nosuid,size=256m,uid=10001,gid=10001 \
+            --tmpfs /cache:rw,noexec,nosuid,size=256m,uid=0,gid=10001,mode=0770 \
             -e MODEL_CACHE_DIR=/cache \
             -e MODEL_LOCAL_FILES_ONLY=true \
             -e BACKGROUND_MODEL_LOAD=true \
