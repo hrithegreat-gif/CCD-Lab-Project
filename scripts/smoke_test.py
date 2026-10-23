@@ -1,149 +1,95 @@
-"""Run runtime acceptance checks against a live HTTP server (standard library only).
-
-The configured input limit is discovered from model metadata instead of being
-hardcoded. If the server protects /api/* with an API key, pass it with
---api-key or the API_KEY environment variable; the key is never printed.
-"""
+"""Live detection acceptance; standard library only, also usable from deploy bundles."""
 import argparse
 import json
+import math
 import os
-import sys
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-def main() -> int:
+def validate_detection(body):
+    if body['status'] != 'success' or body['model'] != 'yolov8n':
+        raise ValueError('Unexpected detection model/status')
+    width, height = body['image']['width'], body['image']['height']
+    detections = body['detections']
+    if not (width > 0 and height > 0 and body['count'] == len(detections)
+            and 0 < len(detections) <= body['parameters']['max_detections']):
+        raise ValueError('Expected nonempty valid detections')
+    previous = 1.0
+    for item in detections:
+        box, score = item['box'], item['confidence']
+        if not (0 <= box['x1'] < box['x2'] <= width and 0 <= box['y1'] < box['y2'] <= height
+                and body['parameters']['conf'] <= score <= previous
+                and 0 <= item['class_id'] < 80 and item['label']):
+            raise ValueError('Invalid box, class or score')
+        previous = score
+    for value in [body['processing_time_ms'], *body['timings_ms'].values()]:
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            raise ValueError('Invalid measured timing')
+
+
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--api-key", default=None,
-                        help="Bearer API key for protected endpoints. Prefer the "
-                             "API_KEY environment variable. The value is never printed.")
+    parser.add_argument('--base-url', default='http://127.0.0.1:8000')
+    parser.add_argument('--api-key', default=None, help='Prefer API_KEY environment variable')
+    parser.add_argument('--image', type=Path, default=Path(__file__).resolve().parents[1] / 'loadtest/sample.jpg')
     args = parser.parse_args()
-    base = args.base_url.rstrip("/")
-    # The server strips whitespace from its configured key; match that here.
-    supplied_key = (args.api_key if args.api_key is not None
-                    else os.environ.get("API_KEY", "")).strip()
-    auth_header = {"Authorization": f"Bearer {supplied_key}"} if supplied_key else {}
-    if auth_header:
-        print("Auth: enabled (key supplied via argument or API_KEY env; not shown)")
-    else:
-        print("Auth: no key supplied; expecting local-only mode")
+    key = (args.api_key if args.api_key is not None else os.environ.get('API_KEY', '')).strip()
+    auth = {'Authorization': f'Bearer {key}'} if key else {}
 
-    def call(path, body=None, headers=None):
-        """JSON request; returns (status, parsed body)."""
-        data = json.dumps(body).encode() if body is not None else None
-        merged = dict(headers or {})
-        if data:
-            merged["Content-Type"] = "application/json"
-        request = Request(base + path, data=data, headers=merged)
+    def call(path, data=None, content_type='image/jpeg', protected=True, raw=False):
+        headers = dict(auth) if protected else {}
+        if data is not None:
+            headers['Content-Type'] = content_type
+        request = Request(args.base_url.rstrip('/') + path, data=data, headers=headers)
         try:
             with urlopen(request, timeout=30) as response:
-                return response.status, json.loads(response.read())
+                status, payload = response.status, response.read()
         except HTTPError as exc:
-            try:
-                payload = json.loads(exc.read())
-            except (ValueError, UnicodeDecodeError):
-                payload = {}
-            return exc.code, payload
+            status, payload = exc.code, exc.read()
+        return status, payload if raw else json.loads(payload)
 
-    def raw_call(path, headers=None):
-        """Request without JSON parsing; returns (status, bytes)."""
-        request = Request(base + path, headers=dict(headers or {}))
-        try:
-            with urlopen(request, timeout=30) as response:
-                return response.status, response.read()
-        except HTTPError as exc:
-            return exc.code, exc.read()
+    def expect_status(result, expected, check):
+        if result[0] != expected:
+            raise RuntimeError(f'{check}: expected {expected}, got {result[0]}')
+        print(f'PASS: {check}')
+        return result[1]
 
     try:
-        for path in ("/health/live", "/health/ready"):
-            status, _ = call(path)
-            if status != 200:
-                raise RuntimeError(f"{path}: expected 200, got {status}")
-            print(f"PASS: {path}")
-
-        status, payload = call("/api/models", headers=auth_header)
-        if status == 401 and not auth_header:
-            raise RuntimeError(
-                "/api/models requires authentication. Supply the server API key "
-                "with --api-key or the API_KEY environment variable."
-            )
-        if status != 200:
-            raise RuntimeError(f"/api/models: expected 200, got {status}")
-        entry = next((m for m in payload if m.get("id") == "sentiment"), None)
-        if entry is None:
-            raise RuntimeError("/api/models: sentiment model missing from registry")
-        if not entry.get("ready"):
-            raise RuntimeError("/api/models: sentiment model is not ready")
-        print("PASS: /api/models")
-
-        if auth_header:
-            unauthenticated_status, _ = call("/api/models")
-            if unauthenticated_status != 401:
-                raise RuntimeError(
-                    "Server accepted an unauthenticated /api/models request "
-                    f"(status {unauthenticated_status}) although an API key was "
-                    "supplied. Check the server API_KEY configuration."
-                )
-            print("PASS: /api/models rejects unauthenticated access")
-
-        # The configured character limit comes from metadata, never a hardcoded number.
-        limit = int(entry["max_input_chars"])
-        if limit < 1:
-            raise RuntimeError("Metadata max_input_chars must be positive")
-        status, details = call("/api/models/sentiment", headers=auth_header)
-        if status != 200 or details.get("max_input_chars") != limit:
-            raise RuntimeError("/api/models/sentiment metadata mismatch")
-        print(f"PASS: /api/models/sentiment (configured input limit {limit})")
-
-        for text, expected in (
-            ("I love this product. It is absolutely wonderful!", "positive"),
-            ("I hate this product. It is terrible and disappointing.", "negative"),
+        for path in ('/health/live', '/health/ready'):
+            expect_status(call(path, protected=False), 200, path)
+        models = expect_status(call('/api/models'), 200, 'model registry')
+        model = next(m for m in models if m['id'] == 'yolov8n')
+        if not model['ready'] or len(model['labels']) != 80:
+            raise ValueError('Model not ready or labels invalid')
+        expect_status(call('/api/models/yolov8n'), 200, 'model metadata')
+        if key:
+            expect_status(call('/api/models', protected=False), 401, 'unauthenticated access rejected')
+            expect_status(call('/api/detect', b'invalid', protected=False), 401, 'auth precedes decoding')
+        image = args.image.read_bytes()
+        body = expect_status(call('/api/detect', image), 200, 'real image inference')
+        validate_detection(body)
+        print(json.dumps(body))
+        for path, data, content_type, status in (
+            ('/api/detect', image, 'application/json', 415),
+            ('/api/detect', b'\xff\xd8\xffbroken', 'image/jpeg', 422),
+            ('/api/detect?conf=2', image, 'image/jpeg', 422),
+            ('/api/detect', b'', 'image/jpeg', 422),
+            ('/api/detect', b'x' * (model['max_image_bytes'] + 1), 'image/jpeg', 413),
         ):
-            status, body = call("/api/inference",
-                                {"model": "sentiment", "input": text},
-                                headers=auth_header)
-            if status != 200 or body.get("prediction") != expected:
-                raise RuntimeError(f"Real {expected} prediction failed: {status}")
-            if not (0 <= body["confidence"] <= 1 and body["processing_time_ms"] > 0):
-                raise RuntimeError("Invalid prediction score or measured timing")
-            print(f"PASS: real {expected} prediction")
-            print(json.dumps(body))
-
-        oversized = "x" * (limit + 1)
-        for request_body, expected in (
-            ({"model": "unknown", "input": "hello"}, 404),
-            ({"model": "sentiment", "input": ""}, 422),
-            ({"model": "sentiment", "input": " \t"}, 422),
-            ({"model": "sentiment"}, 422),
-            ({"model": "sentiment", "input": oversized}, 422),
-        ):
-            status, payload = call("/api/inference", request_body, headers=auth_header)
-            if status != expected:
-                raise RuntimeError(f"Validation: expected {expected}, got {status}")
-            if request_body.get("input") == oversized and oversized in json.dumps(payload):
-                raise RuntimeError("Error response echoed the rejected input")
-            print(f"PASS: error status {expected}")
-
-        status, metrics_body = raw_call("/metrics", headers=auth_header)
-        if status == 401 and not auth_header:
-            print("WARN: /metrics requires authentication; supply --api-key or "
-                  "API_KEY to verify the exposition.")
-        elif status != 200:
-            raise RuntimeError(f"/metrics: expected 200, got {status}")
-        else:
-            exposition = metrics_body.decode("utf-8", "replace")
-            for name in ("http_requests_total", "http_request_duration_seconds"):
-                if name not in exposition:
-                    raise RuntimeError(f"/metrics is missing {name}")
-            print("PASS: /metrics exposition")
-
-        print("PASS: runtime live HTTP acceptance checks.")
+            expect_status(call(path, data, content_type), status, f'validation {status}')
+        expect_status(call('/api/models/unknown'), 404, 'unknown model')
+        metrics = expect_status(call('/metrics', raw=True), 200, 'metrics')
+        if not all(name in metrics for name in (b'http_requests_total', b'http_request_duration_seconds')):
+            raise ValueError('Missing HTTP metrics')
+        print('PASS: detection live HTTP acceptance checks.')
         return 0
-    except (URLError, OSError, ValueError, KeyError, RuntimeError) as exc:
-        print(f"FAIL: {exc}. Check server startup and docs/RUNTIME.md.")
+    except (URLError, OSError, ValueError, KeyError, RuntimeError, StopIteration, TypeError) as exc:
+        # Never echo URLs, headers or response bodies from failures.
+        print(f'FAIL: detection acceptance ({type(exc).__name__}). Check server readiness/configuration.')
         return 1
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == '__main__':
+    raise SystemExit(main())

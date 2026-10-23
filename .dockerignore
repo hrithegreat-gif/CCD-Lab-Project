@@ -9,10 +9,11 @@
 !requirements.txt
 !scripts
 !scripts/entrypoint.sh
+!scripts/prepare_model.py
 !models
 models/*
 !models/NOTICE.md
-!models/LICENSE-APACHE-2.0.txt
+!models/LICENSE-AGPL-3.0.txt
 
 # Defensive re-exclusions: never ship local state, secrets or caches even if
 # directory names change. Later rules win over earlier ones.

@@ -1,8 +1,8 @@
-# CPU-only sentiment inference image. Single Uvicorn worker, non-root, no GPU.
+# CPU-only object detection image. Single Uvicorn worker, non-root, no GPU.
 # Model assets are baked at build time from the pinned revision in
 # app/model_registry.py, so the image never depends on a host model cache.
 # Local clean build and hardened smoke: scripts/test-container.ps1.
-# Executed evidence is recorded in docs/VERIFICATION.md; hosted CI is a separate gate.
+# Executed evidence is recorded in docs/EVIDENCE.md; hosted CI is a separate gate.
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -23,29 +23,14 @@ COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
 # The image redistributes the baked model export: keep attribution and the
-# Apache-2.0 license text inside the image (root-owned, world-readable).
+# AGPL-3.0 license text inside the image (root-owned, world-readable).
 RUN mkdir -p /opt/model-notices
-COPY models/NOTICE.md models/LICENSE-APACHE-2.0.txt /opt/model-notices/
+COPY models/NOTICE.md models/LICENSE-AGPL-3.0.txt /opt/model-notices/
 
-# Bake the allowlisted sentiment assets (config/tokenizer/quantized weights)
-# into a root-owned, world-readable store. Uses the same pinned registry as the
-# application, so image and code can never drift apart. The step verifies real
-# positive and negative predictions; a failed download or wrong label breaks
-# the build.
-RUN python -c "import json; \
-from pathlib import Path; \
-from app.config import Settings; \
-from app.inference import YoloDetector, download_assets; \
-from app.model_registry import YOLOV8N; \
-settings = Settings(_env_file=None, model_cache_dir=Path('/opt/model-cache')); \
-assets = download_assets(YOLOV8N, settings); \
-model = YoloDetector(YOLOV8N, settings); \
-model.load(); \
-from PIL import Image; \
-image = Image.open('app/static/sample-cat.jpg'); \
-assert any(d['label'] == 'cat' for d in model.predict(image, .25, .45, 100).detections); \
-print(json.dumps({'baked': YOLOV8N.source, 'revision': YOLOV8N.revision, 'bytes': {name: path.stat().st_size for name, path in assets.items()}})); \
-model.close()" \
+# Verify the same pinned weights and real sample detections used by local setup.
+COPY scripts/prepare_model.py ./scripts/prepare_model.py
+RUN python scripts/prepare_model.py --bake /opt/model-cache --verify \
+ && chmod -R a+rX /opt/model-cache \
  && touch /opt/model-cache/.model-baked
 
 # Run as an unprivileged user. Kubernetes mounts emptyDir volumes over

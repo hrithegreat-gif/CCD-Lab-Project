@@ -20,3 +20,21 @@ API privacy and cancellation/capacity tests. Full command
 `.venv-review/Scripts/python.exe -m pytest tests/ -q -p no:cacheprovider --tb=short`:
 276 passed in 6.52 seconds. `node --test tests/frontend/studio-core.test.mjs`:
 60 passed, no skips. Real CPU model tests are included.
+
+Migration phase 6 (2026-10-23): runtime pins regenerated with the 2026-10-09
+release cutoff; no PyTorch, Ultralytics, Hugging Face or tokenizers in runtime.
+Dependency checker: 35 distributions / 72 active requirements passed.
+Real preparation verifies cat, cup and person. Full Python suite: 276 passed
+in 5.77 seconds. Edge browser acceptance passed: three real samples, uploaded
+image, canvas boxes, accessible table/tabs, annotated PNG, mobile layout and
+session-only key/history. Desktop/mobile screenshots visually reviewed under
+`.validation/detection-browser/` (local artifacts).
+
+Clean Docker build succeeded; first hardened startup exposed owner-only model
+file permissions. The bake step now explicitly makes baked assets readable by
+the non-root runtime user. Rebuilt hardened container acceptance passed: real cat,
+401/413/415/422/404, metrics, UID 10001 and pip consistency, read-only root,
+1 CPU/1 GiB with root-owned group-writable cache. Tested image ID:
+`sha256:db42fa6870a3061e1adeb9da93863651b6066c4d4a073931c7ae2b6744832321`.
+Observed 150.3 MiB idle snapshot is not peak-memory calibration. AWS has not
+been deployed; no cloud acceptance is claimed.

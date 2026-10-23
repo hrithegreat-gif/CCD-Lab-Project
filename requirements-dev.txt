@@ -1,5 +1,4 @@
-# Tested test-client and pytest pins. httpx/httpcore come from requirements.txt
-# (promoted to runtime for extension adapters) and remain available to tests.
+# Test dependencies; runtime HTTP client is shared with verified asset downloads.
 -r requirements.txt
 iniconfig==2.3.1
 pluggy==1.6.0

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'phase4/**']
+    branches: [main, 'phase4/**', 'feature/object-detection']
   pull_request:
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   tests:
-    name: Real sentiment tests
+    name: Real detection tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
         run: python -m pip check
       - name: Prepare pinned model assets and verify real predictions
         run: python scripts/prepare_model.py --verify
-      - name: Run all real sentiment tests (includes integration)
+      - name: Run all real detection tests (includes integration)
         run: python -m pytest tests/ -v
 
   manifests:
@@ -80,7 +80,7 @@ jobs:
             -e MODEL_CACHE_DIR=/cache \
             -e MODEL_LOCAL_FILES_ONLY=true \
             -e BACKGROUND_MODEL_LOAD=true \
-            -e MAX_REQUEST_BYTES=65536 \
+            -e MAX_REQUEST_BYTES=5246976 \
             -e API_KEY= \
             ai-model-serving-ci:${GITHUB_SHA}
       - name: Wait for readiness

@@ -80,7 +80,7 @@ jobs:
             -e MODEL_CACHE_DIR=/cache \
             -e MODEL_LOCAL_FILES_ONLY=true \
             -e BACKGROUND_MODEL_LOAD=true \
-            -e MAX_REQUEST_BYTES=65536 \
+            -e MAX_REQUEST_BYTES=5246976 \
             -e API_KEY= \
             "${{ steps.image.outputs.image_uri }}"
       - name: Wait for readiness

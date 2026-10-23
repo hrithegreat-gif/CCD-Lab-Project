@@ -1,7 +1,7 @@
 # Build and exercise the actual hardened Linux container; remove only our test container.
 [CmdletBinding()]
 param(
-    [string]$Image = 'ai-model-serving:phase2',
+    [string]$Image = 'ai-model-serving:detection',
     [ValidateRange(1024,65535)][int]$Port = 8001,
     [switch]$SkipBuild,
     [switch]$NoCache
