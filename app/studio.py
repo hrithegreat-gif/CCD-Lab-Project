@@ -19,6 +19,9 @@ ASSET_ALLOWLIST: Mapping[str, tuple[str, str]] = {
     "studio.css": ("text/css; charset=utf-8", _NO_CACHE),
     "studio-core.mjs": ("text/javascript; charset=utf-8", _NO_CACHE),
     "studio.mjs": ("text/javascript; charset=utf-8", _NO_CACHE),
+    "sample-person.jpg": ("image/jpeg", _NO_CACHE),
+    "sample-cat.jpg": ("image/jpeg", _NO_CACHE),
+    "sample-coffee.jpg": ("image/jpeg", _NO_CACHE),
     "favicon.svg": ("image/svg+xml", _NO_CACHE),
 }
 
@@ -27,7 +30,7 @@ UI_CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'none'",
     "script-src 'self'",
     "style-src 'self'",
-    "img-src 'self' data:",
+    "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
     "media-src 'self' blob:",

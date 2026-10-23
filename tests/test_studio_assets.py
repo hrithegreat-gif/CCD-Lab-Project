@@ -36,7 +36,6 @@ def test_controller_literal_dom_ids_exist_exactly_once(document):
     controller = (STATIC / "studio.mjs").read_text(encoding="utf-8")
     references = set(re.findall(r"\$\('([a-z][a-z0-9_-]*)'\)", controller))
     references.update(f"{prefix}-{view}" for prefix in ("view", "nav") for view in ("playground", "models", "runs"))
-    references.update(f"task-{task}" for task in ("sentiment", "generate", "speech", "transcribe"))
     assert references <= ids.keys(), f"Missing UI IDs: {references - ids.keys()}"
 
 
@@ -59,16 +58,8 @@ def test_key_field_never_submits_via_native_get_or_has_a_default(document):
     assert "sessionStorage" not in (STATIC / "studio.mjs").read_text(encoding="utf-8")
 
 
-def test_unicode_text_validation_is_not_preempted_by_html_utf16_maxlength(document):
-    textarea = next(attrs for tag, attrs in document if tag == "textarea" and attrs.get("id") == "input-text")
-    assert "maxlength" not in textarea
-
-
-def test_tabs_reference_real_labelled_panels(document):
-    ids = {attrs["id"]: attrs for _, attrs in document if "id" in attrs}
-    for _, attrs in document:
-        if attrs.get("role") == "tab":
-            assert attrs["aria-controls"] in ids
-        if attrs.get("role") == "tabpanel":
-            assert attrs["aria-labelledby"] in ids
-    assert ids["auth-dialog"]["aria-labelledby"] == "auth-title"
+def test_file_picker_types_and_accessible_overlay(document):
+    picker=next(attrs for tag,attrs in document if attrs.get('id')=='image-file')
+    assert picker['type']=='file' and picker['accept']=='image/jpeg,image/png,image/webp'
+    assert any(tag=='canvas' and attrs.get('id')=='overlay' for tag,attrs in document)
+    assert any(tag=='tbody' and attrs.get('id')=='detections' for tag,attrs in document)

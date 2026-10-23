@@ -290,8 +290,6 @@ input[type="file"]::file-selector-button:hover { background: #ece5d2; }
   font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
 }
 .result-model { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
-.result-content[data-prediction="positive"] .result-status { background: var(--good-bg); color: var(--good); }
-.result-content[data-prediction="negative"] .result-status { background: var(--bad-bg); color: var(--bad); }
 
 .result-value { font-size: clamp(24px, 2.3vw, 30px); font-weight: 720; letter-spacing: -0.025em; line-height: 1.2; margin: 4px 0 12px; overflow-wrap: anywhere; }
 .result-description { margin: 0; color: var(--muted); font-size: 13.5px; }
@@ -489,3 +487,21 @@ audio { width: 100%; }
     scroll-behavior: auto !important;
   }
 }
+
+/* Detection workspace uses the existing palette and panel layout. */
+.drop-zone { padding:24px; border:2px dashed var(--line-2); border-radius:12px; background:var(--surface-2); }
+.drop-zone input { max-width:100%; }
+.drop-zone p { color:var(--muted); font-size:13px; }
+.image-stage { position:relative; width:100%; margin:16px 0; }
+.image-stage img { display:block; width:100%; height:auto; border-radius:8px; }
+.image-stage canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.table-scroll { overflow:auto; max-width:100%; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th,td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
+caption { text-align:left; color:var(--muted); }
+input[type=range] { width:100%; accent-color:var(--violet); }
+dialog { max-width:420px; width:90%; border:1px solid var(--line); border-radius:14px; background:var(--surface); color:var(--text); padding:24px; }
+dialog::backdrop { background:rgba(23,18,38,.45); }
+dialog input { width:100%; padding:10px; }
+#message { overflow-wrap:anywhere; }
+#model-metadata { max-width:100%; overflow:auto; }

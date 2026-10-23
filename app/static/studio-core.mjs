@@ -1,187 +1,67 @@
-/* Pure studio contract helpers. No browser storage, analytics or provider SDKs. */
-export const MODELS = Object.freeze([
-  { id: 'sentiment', name: 'DistilBERT', subtitle: 'SST-2 · quantized ONNX', task: 'sentiment', capability: null, provider: 'local', runtime: 'ONNX Runtime · CPU', description: 'Understand the tone of English text with a compact, local sentiment model.' },
-  { id: 'qwen3.5-0.8b', name: 'Qwen 3.5', subtitle: '0.8B · local generation', task: 'generate', capability: 'qwen-generation', provider: 'local', runtime: 'Local · CPU', description: 'Generate text with the optional local Qwen adapter.' },
-  { id: 'groq-gpt-oss-120b', name: 'GPT-OSS', subtitle: '120B · Groq', task: 'generate', capability: 'groq-text', provider: 'groq', runtime: 'Groq · hosted provider', description: 'Generate text through the optional Groq adapter. Provider usage may be billable.' },
-  { id: 'kitten-speech', name: 'Kitten Mini', subtitle: 'Text to speech · WAV', task: 'speech', capability: 'kitten-speech', provider: 'local', runtime: 'Local · CPU', description: 'Turn text into downloadable speech with the optional Kitten adapter.' },
-  { id: 'groq-transcription', name: 'Whisper Turbo', subtitle: 'Audio to text · Groq', task: 'transcribe', capability: 'groq-transcription', provider: 'groq', runtime: 'Groq · hosted provider', description: 'Transcribe an audio file through the optional Groq adapter. Provider usage may be billable.' },
-]);
-export const DEFAULT_CONFIG = Object.freeze({
-  auth_required: false, max_request_bytes: 65536, sentiment_max_input_chars: 2000,
-  generation_max_input_chars: 2000, generation_max_output_tokens: 256,
-  speech_max_input_chars: 1000, transcription_max_bytes: 10485760,
-});
-export const SAMPLES = Object.freeze({
-  sentiment: [
-    ['Positive review', 'I love this product. The thoughtful design and helpful support made the whole experience wonderful.'],
-    ['Negative review', 'I am disappointed with this product. It is unreliable, frustrating, and not worth the money.'],
-    ['Mixed feedback', 'The design is beautiful and the team was helpful, but the setup was slow and several features felt unfinished.'],
-  ],
-  generate: [
-    ['Explain a concept', 'Explain model quantization in three clear sentences for someone new to machine learning.'],
-    ['Write a launch note', 'Write a short, friendly launch announcement for a new AI model playground.'],
-    ['Brainstorm ideas', 'Suggest three practical ways a small business could use text sentiment analysis.'],
-  ],
-  speech: [
-    ['Welcome message', 'Welcome to Inference Studio. Your models, one playground.'],
-    ['Product narration', 'Explore real model inference with a clear, simple workspace built for experimentation.'],
-    ['Short announcement', 'Your model is ready. Let us make something great.'],
-  ],
-});
-export const characterCount = (value) => Array.from(value).length;
-export const jsonBytes = (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
-export const formatMilliseconds = (value) => Number.isFinite(value) && value >= 0
-  ? `${value < 10 ? value.toFixed(2) : value.toFixed(1)} ms` : '—';
-export const formatBytes = (value) => value >= 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${(value / 1024).toFixed(1)} KB`;
-
-export function normalizeConfig(raw = {}) {
-  const result = { ...DEFAULT_CONFIG, auth_required: raw.auth_required === true };
-  for (const key of Object.keys(DEFAULT_CONFIG)) {
-    if (key !== 'auth_required' && Number.isSafeInteger(raw[key]) && raw[key] > 0) result[key] = raw[key];
-  }
-  return result;
+// Pure detection contracts: no DOM, storage or provider integration.
+export const MODELS=Object.freeze([{id:'yolov8n',name:'YOLOv8n',task:'object-detection'}]);
+export const DEFAULT_CONFIG=Object.freeze({auth_required:false,max_request_bytes:5246976,max_image_bytes:5242880,max_image_pixels:16777216,default_conf:.25,default_iou:.45,max_detections:100,accepted_types:['image/jpeg','image/png','image/webp']});
+export const SAMPLES=Object.freeze({person:'/studio/assets/sample-person.jpg',cat:'/studio/assets/sample-cat.jpg',coffee:'/studio/assets/sample-coffee.jpg'});
+export const SAFE_PATHS=new Set(['/api/detect','/api/models','/api/models/yolov8n','/health/ready','/health/live','/studio/config']);
+export class StudioError extends Error {constructor(message,status=0){super(message);this.status=status;}}
+const finite=(x)=>Number.isFinite(x)&&x>=0;
+export function normalizeConfig(raw){
+ if(!raw||typeof raw.auth_required!=='boolean')throw new StudioError('Invalid service configuration.');
+ const result={auth_required:raw.auth_required};
+ for(const k of ['max_request_bytes','max_image_bytes','max_image_pixels','max_detections']){
+  if(!Number.isSafeInteger(raw[k])||raw[k]<=0)throw new StudioError('Invalid service limits.');result[k]=raw[k];
+ }
+ if(!Number.isFinite(raw.default_conf)||raw.default_conf<.05||raw.default_conf>.95||!Number.isFinite(raw.default_iou)||raw.default_iou<.1||raw.default_iou>.95||raw.max_detections>300||raw.max_image_bytes>raw.max_request_bytes)throw new StudioError('Invalid service limits.');
+ if(!Array.isArray(raw.accepted_types)||!raw.accepted_types.length||raw.accepted_types.some(t=>!DEFAULT_CONFIG.accepted_types.includes(t)))throw new StudioError('Invalid image types.');
+ return {...result,default_conf:raw.default_conf,default_iou:raw.default_iou,accepted_types:[...raw.accepted_types]};
 }
-
-export function modelStates(metadata, capabilities, config = DEFAULT_CONFIG, baselineReady = false) {
-  const baseline = Array.isArray(metadata) ? metadata.find((item) => item?.id === 'sentiment') : null;
-  const caps = capabilities?.capabilities || {};
-  return MODELS.map((model) => {
-    const capability = caps[model.capability];
-    const state = !model.capability ? (baseline?.ready === true && baselineReady ? 'ready' : 'unavailable')
-      : ['disabled', 'loading', 'unavailable', 'ready'].includes(capability?.state) ? capability.state : 'unavailable';
-    return { ...model, state, metadata: !model.capability ? baseline : capability,
-      maxChars: model.task === 'sentiment' ? (Number.isSafeInteger(baseline?.max_input_chars) && baseline.max_input_chars > 0 ? Math.min(baseline.max_input_chars, config.sentiment_max_input_chars) : config.sentiment_max_input_chars)
-        : model.task === 'speech' ? config.speech_max_input_chars : config.generation_max_input_chars,
-      voices: Array.isArray(capability?.voices) ? capability.voices.filter((voice) => typeof voice === 'string') : [],
-    };
-  });
+export function validateFile(file,config=DEFAULT_CONFIG){
+ if(!(file instanceof Blob)||!config.accepted_types.includes(file.type))throw new StudioError('Choose a JPEG, PNG or WebP image.');
+ if(!file.size)throw new StudioError('The image is empty.');
+ if(file.size>config.max_image_bytes||file.size>config.max_request_bytes)throw new StudioError('The image exceeds the upload limit.');
+ return file;
 }
-
-const AUDIO_TYPES = new Set(['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave', 'audio/mpeg', 'audio/mp3', 'audio/mpga', 'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/ogg', 'application/ogg', 'audio/webm', 'audio/flac', 'audio/x-flac']);
-const AUDIO_EXTENSIONS = { wav: 'audio/wav', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', ogg: 'audio/ogg', webm: 'audio/webm', flac: 'audio/flac' };
-export function audioContentType(file) {
-  if (!file) return null;
-  const type = String(file.type || '').toLowerCase().split(';')[0];
-  return AUDIO_TYPES.has(type) ? type : AUDIO_EXTENSIONS[String(file.name || '').split('.').pop().toLowerCase()] || null;
+export function buildRequest(file,{key='',conf=.25,iou=.45,maxDetections=100,config=DEFAULT_CONFIG}={}){
+ validateFile(file,config);
+ if(!Number.isFinite(conf)||conf<.05||conf>.95||!Number.isFinite(iou)||iou<.1||iou>.95||!Number.isInteger(maxDetections)||maxDetections<1||maxDetections>config.max_detections)throw new StudioError('Invalid detection parameters.');
+ const headers={'Content-Type':file.type};if(key)headers.Authorization=`Bearer ${key}`;
+ return {url:`/api/detect?conf=${conf}&iou=${iou}&max_detections=${maxDetections}`,init:{method:'POST',headers,body:file}};
 }
-
-export class StudioError extends Error {
-  constructor(message, status = 0) { super(message); this.name = 'StudioError'; this.status = status; }
+export function labelColor(label){let hash=0;for(const c of label)hash=(hash*31+c.codePointAt(0))>>>0;return `hsl(${hash%360}, 80%, 42%)`;}
+export function scaleBoxes(detections,imageSize,displaySize){
+ if(![imageSize.width,imageSize.height,displaySize.width,displaySize.height].every(v=>Number.isFinite(v)&&v>0))throw new StudioError('Invalid image dimensions.');
+ const sx=displaySize.width/imageSize.width,sy=displaySize.height/imageSize.height;
+ return detections.map(d=>({...d,box:{x1:d.box.x1*sx,y1:d.box.y1*sy,x2:d.box.x2*sx,y2:d.box.y2*sy}}));
 }
-
-export function buildRequest(model, input, options = {}, config = DEFAULT_CONFIG) {
-  if (!model || model.state !== 'ready') throw new StudioError('This model is not ready. Choose a ready model or ask the operator to enable it.');
-  if (model.provider === 'groq' && options.providerConsent !== true) throw new StudioError('Confirm hosted-provider usage before sending this request.');
-  if (model.task === 'transcribe') {
-    const file = options.file;
-    if (!file || file.size <= 0) throw new StudioError('Choose a nonempty audio file to transcribe.');
-    const contentType = audioContentType(file);
-    if (!contentType) throw new StudioError('Use a WAV, MP3, M4A, OGG, WebM, or FLAC audio file.');
-    const limit = Math.min(config.transcription_max_bytes, config.max_request_bytes);
-    if (file.size > limit) throw new StudioError(`Audio exceeds the current ${formatBytes(limit)} request limit.`);
-    return { path: '/api/transcriptions', body: file, contentType };
-  }
-  if (typeof input !== 'string' || !input.trim()) throw new StudioError('Enter some text before running the model.');
-  if (characterCount(input) > model.maxChars) throw new StudioError(`Keep your input within ${model.maxChars.toLocaleString()} characters.`);
-  let path, body;
-  if (model.task === 'sentiment') {
-    path = '/api/inference'; body = { model: 'sentiment', input };
-  } else if (model.task === 'generate') {
-    const maxTokens = Number(options.maxTokens);
-    if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > config.generation_max_output_tokens) {
-      throw new StudioError(`Output tokens must be between 1 and ${config.generation_max_output_tokens}.`);
-    }
-    path = '/api/generate'; body = { model: model.id, input, max_output_tokens: maxTokens };
-  } else if (model.task === 'speech') {
-    path = '/api/speech'; body = { input };
-    if (options.voice) {
-      if (model.voices.length && !model.voices.includes(options.voice)) throw new StudioError('Choose a voice offered by this model.');
-      body.voice = options.voice;
-    }
-  } else throw new StudioError('Unknown model task.');
-  if (jsonBytes(body) > config.max_request_bytes) throw new StudioError('This input exceeds the server request-byte limit. Shorten it and try again.');
-  return { path, body: JSON.stringify(body), contentType: 'application/json' };
+export function validateResult(data){
+ const fail=()=>{throw new StudioError('The server returned an invalid detection result.');};
+ if(data?.status!=='success'||data.model!=='yolov8n'||!finite(data.processing_time_ms)||!Number.isInteger(data.image?.width)||data.image.width<1||!Number.isInteger(data.image?.height)||data.image.height<1||!Array.isArray(data.detections)||data.count!==data.detections.length||data.count>300)fail();
+ const p=data.parameters;
+ if(!p||!Number.isFinite(p.conf)||p.conf<.05||p.conf>.95||!Number.isFinite(p.iou)||p.iou<.1||p.iou>.95||!Number.isInteger(p.max_detections)||p.max_detections<1||p.max_detections>300||data.count>p.max_detections)fail();
+ if(!['decode','inference','postprocess'].every(k=>finite(data.timings_ms?.[k])))fail();
+ let previous=1;
+ for(const d of data.detections){const b=d.box;
+  if(!Number.isInteger(d.class_id)||d.class_id<0||d.class_id>=80||typeof d.label!=='string'||!d.label||!finite(d.confidence)||d.confidence>previous||d.confidence<p.conf||!b||![b.x1,b.y1,b.x2,b.y2].every(finite)||b.x2<=b.x1||b.y2<=b.y1||b.x2>data.image.width||b.y2>data.image.height)fail();previous=d.confidence;
+ }
+ return data;
 }
-
-export function statusMessage(status) {
-  return ({
-    401: 'An API key is required, or the current key was rejected. Update session access and try again.',
-    403: 'This request is not allowed by the server.',
-    404: 'This model or endpoint is not available on this server.',
-    413: 'The request is too large for the server. Reduce the input or audio size.',
-    415: 'The server does not support this audio format.',
-    422: 'The server rejected the input or settings. Check the limits and try again.',
-    429: 'The model is at capacity. Wait a moment, then run it again.',
-    500: 'The model could not complete this request. Check server logs without sharing your input or key.',
-    502: 'The hosted provider could not complete this request. Ask the operator to check provider access.',
-    503: 'The model is not ready or the service is temporarily unavailable. Refresh its status.',
-    504: 'The server deadline was exceeded. No result was fabricated; try a shorter input later.',
-  })[status] || `The server returned HTTP ${status}. Please try again later.`;
+export function serializableResult(raw){
+ const d=validateResult(raw);
+ return {status:d.status,model:d.model,image:{width:d.image.width,height:d.image.height},count:d.count,detections:d.detections.map(x=>({class_id:x.class_id,label:x.label,confidence:x.confidence,box:{x1:x.box.x1,y1:x.box.y1,x2:x.box.x2,y2:x.box.y2}})),parameters:{conf:d.parameters.conf,iou:d.parameters.iou,max_detections:d.parameters.max_detections},processing_time_ms:d.processing_time_ms,timings_ms:{decode:d.timings_ms.decode,inference:d.timings_ms.inference,postprocess:d.timings_ms.postprocess}};
 }
-
-const SAFE_PATHS = new Set(['/studio/config', '/api/models', '/api/capabilities', '/api/inference', '/api/generate', '/api/speech', '/api/transcriptions', '/health/live', '/health/ready']);
-export async function apiRequest(path, { key = '', method = 'GET', body, contentType, signal, timeout = 8000, fetcher = globalThis.fetch } = {}) {
-  if (!SAFE_PATHS.has(path) || !['GET', 'POST'].includes(method)) throw new StudioError('The studio only calls its own allowlisted API endpoints.');
-  const controller = new AbortController();
-  let timedOut = false;
-  const abort = () => controller.abort();
-  if (signal?.aborted) controller.abort();
-  else signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeout);
-  try {
-    const headers = {};
-    if (key && path.startsWith('/api/')) headers.Authorization = `Bearer ${key}`;
-    if (contentType) headers['Content-Type'] = contentType;
-    const response = await fetcher(path, { method, headers, body, signal: controller.signal, credentials: 'same-origin', cache: 'no-store', redirect: 'error' });
-    if (!response.ok) throw new StudioError(statusMessage(response.status), response.status);
-    if (path === '/api/speech') {
-      if (response.headers.get('content-type')?.split(';')[0] !== 'audio/wav') throw new StudioError('The server did not return the expected WAV audio.');
-      const blob = await response.blob();
-      if (!blob.size) throw new StudioError('The server returned empty audio.');
-      const timing = response.headers.get('x-processing-time-ms');
-      const rate = response.headers.get('x-sample-rate');
-      return { blob, processing_time_ms: timing !== null && Number.isFinite(Number(timing)) && Number(timing) >= 0 ? Number(timing) : null,
-        sample_rate: rate !== null && Number.isFinite(Number(rate)) && Number(rate) > 0 ? Number(rate) : null, audio_bytes: blob.size };
-    }
-    return await response.json();
-  } catch (error) {
-    if (error instanceof StudioError) throw error;
-    if (controller.signal.aborted) {
-      if (timedOut) throw new StudioError('The browser wait timed out. Server work may continue; no automatic retry was sent.');
-      throw new StudioError('Stopped waiting for this request. Server work may continue.', -1);
-    }
-    throw new StudioError('Cannot reach the API or read its response. Check the server connection and refresh status.');
-  } finally {
-    clearTimeout(timer); signal?.removeEventListener('abort', abort);
-  }
-}
-
-const finiteNonnegative = (value) => Number.isFinite(value) && value >= 0;
-export function validateResult(model, data) {
-  if (model.task === 'speech') {
-    if (!(data.blob instanceof Blob) || data.blob.size <= 0) throw new StudioError('The server returned an invalid audio result.');
-    return data;
-  }
-  if (data?.status !== 'success' || !finiteNonnegative(data.processing_time_ms)) throw new StudioError('The server returned an invalid model result.');
-  if (model.task === 'sentiment') {
-    if (data.model !== 'sentiment' || !['positive', 'negative'].includes(data.prediction) || !finiteNonnegative(data.confidence)
-        || data.confidence > 1 || !Number.isInteger(data.tokens_processed) || data.tokens_processed < 1 || typeof data.truncated !== 'boolean') {
-      throw new StudioError('The server returned an invalid sentiment result.');
-    }
-  } else if (model.task === 'generate') {
-    if (data.model !== model.id || data.provider !== model.provider || typeof data.output !== 'string'
-        || !Number.isInteger(data.input_tokens) || data.input_tokens < 0 || !Number.isInteger(data.output_tokens) || data.output_tokens < 0
-        || typeof data.truncated_input !== 'boolean') throw new StudioError('The server returned an invalid generation result.');
-  } else if (model.task === 'transcribe') {
-    if (data.model !== 'whisper-large-v3-turbo' || typeof data.text !== 'string'
-        || (data.duration_seconds !== null && data.duration_seconds !== undefined && !finiteNonnegative(data.duration_seconds))) {
-      throw new StudioError('The server returned an invalid transcription result.');
-    }
-  } else throw new StudioError('The server returned an unknown model task.');
-  return data;
-}
-
-export function serializableResult(data) {
-  const { blob, ...rest } = data;
-  return blob ? { status: 'success', format: 'audio/wav', ...rest } : rest;
+export function statusMessage(status){return ({401:'Enter the correct session API key.',413:'Image exceeds the upload limit.',415:'Unsupported image type or mismatched file contents.',422:'Invalid image or detection settings.',429:'Inference capacity reached. Try again later.',503:'Model is not ready. Refresh status.',504:'Inference timed out.'})[status]||'The request failed. Please try again.';}
+export async function requestApi(path,{key='',init={},signal,timeout=60000,fetcher=globalThis.fetch}={}){
+ const base=path.split('?')[0];
+ if(!SAFE_PATHS.has(base)||path.includes('#')||(!path.startsWith(base+'?')&&path!==base)||!['GET','POST'].includes(init.method||'GET'))throw new StudioError('Only allowlisted same-origin API paths are permitted.');
+ const headers=Object.fromEntries(Object.entries(init.headers||{}).filter(([name])=>name.toLowerCase()!=='authorization'));
+ if(key&&base.startsWith('/api/'))headers.Authorization=`Bearer ${key}`;
+ const controller=new AbortController();const abort=()=>controller.abort();let timedOut=false;
+ if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(()=>{timedOut=true;abort();},timeout);
+ try{
+  const response=await fetcher(path,{...init,headers,signal:controller.signal,redirect:'error',credentials:'same-origin',cache:'no-store'});
+  if(!response.ok)throw new StudioError(statusMessage(response.status),response.status);
+  return await response.json();
+ }catch(e){if(e instanceof StudioError)throw e;if(controller.signal.aborted)throw new StudioError(timedOut?'Browser wait timed out; server work may continue.':'Stopped waiting; server work may continue.',-1);throw new StudioError('Cannot reach the API or read its response.');}
+ finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
 }

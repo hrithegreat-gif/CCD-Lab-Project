@@ -26,13 +26,7 @@ from app.studio import (
 )
 from tests.conftest import TEST_API_KEY, TestModel
 
-EXPECTED_CONFIG_KEYS = {
-    "title",
-    "version",
-    "auth_required",
-    "max_request_bytes",
-    "sentiment_max_input_chars",
-}
+EXPECTED_CONFIG_KEYS = {'auth_required','max_request_bytes','max_image_bytes','max_image_pixels','default_conf','default_iou','max_detections','accepted_types'}
 
 FIXTURE_ASSETS = {
     "index.html": b"<!doctype html><html><body>studio fixture index</body></html>",
@@ -212,15 +206,11 @@ def _raw_headers(path: str) -> dict[str, str]:
 # Safe UI config: fields, no secrets, no paths, no invented values
 # ---------------------------------------------------------------------------
 
-def test_config_without_extensions_reports_fallback_defaults(studio_client):
+def test_detection_config_reports_safe_defaults(studio_client):
     data = studio_client.get("/studio/config").json()
-    assert data == {
-        "title": "AI Model Serving Platform",
-        "version": "0.1.0",
-        "auth_required": False,
-        "max_request_bytes": 65536,
-        "sentiment_max_input_chars": 2000,
-    }
+    assert data == dict(auth_required=False,max_request_bytes=5246976,max_image_bytes=5242880,
+                        max_image_pixels=16777216,default_conf=.25,default_iou=.45,max_detections=100,
+                        accepted_types=['image/jpeg','image/png','image/webp'])
     assert set(data) == EXPECTED_CONFIG_KEYS
 
 
@@ -241,11 +231,9 @@ def test_config_with_auth_reports_flag_never_the_key(tmp_path):
 
 def test_create_app_installs_studio_with_runtime_limits(client):
     data = client.get("/studio/config").json()
-    assert data["title"] == "AI Model Serving Platform"
-    assert data["version"] == "0.1.0"
     assert data["auth_required"] is False
     assert data["max_request_bytes"] == client.app.state.settings.max_request_bytes
-    assert data["sentiment_max_input_chars"] == client.app.state.settings.max_input_chars
+    assert data["max_image_pixels"] == client.app.state.settings.max_image_pixels
 
 
 def test_install_studio_cannot_be_called_twice_on_created_app(application):
