@@ -9,6 +9,8 @@ no Secret material in git, per-Pod caches (no PVC), immutable tagged images.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 import shutil
@@ -535,7 +537,7 @@ for (const [name, samples] of Object.entries(state.trends)) {
     "p(95)": sorted[Math.min(sorted.length - 1, Math.floor(0.95 * sorted.length))],
   } };
 }
-metrics["http_reqs"] = { values: { count: 6, rate: 6 / 225 } };
+metrics["http_reqs"] = { values: { count: 5, rate: 5 / 225 } };
 metrics["http_req_duration"] = { values: { "p(95)": 42 } };
 metrics["checks"] = { values: { rate: 5 / 6 } };
 metrics["http_req_failed"] = { values: { rate: 0 } };
@@ -547,6 +549,7 @@ assert(summary.scenario.no_connection_reuse === true, "summary records reuse mod
 assert(summary.totals.successful_200 === 1, "totals success valid-only");
 assert(approx(summary.totals.successful_throughput_rps, 1 / 225), "totals successful throughput");
 assert(summary.totals.attempts_total === 6, "totals attempts");
+assert(summary.totals.completed_http_requests === 5, "interrupted attempt is not a completed HTTP request");
 assert(approx(summary.totals.attempt_throughput_rps, 6 / 225), "totals attempt throughput");
 assert(summary.totals.requests_200_invalid === 1, "totals invalid");
 assert(summary.totals.requests_other === 1, "totals other");
@@ -769,9 +772,11 @@ def test_container_smoke_runs_hardened_in_both_workflows():
         assert "no-new-privileges" in raw, name
         assert "--memory 1g" in raw, name
         assert "--cpus 1" in raw, name
-        # tmpfs mounts must be owned by the container uid so the read-only
-        # rootfs image can still write its cache and temp files.
+        # Temp files are user-owned, but cache must reproduce Kubernetes'
+        # root-owned, fsGroup-writable emptyDir. A user-owned cache hid a
+        # cp -a timestamp-preservation failure during real Pod startup.
         assert "uid=10001,gid=10001" in raw, name
+        assert "--tmpfs /cache:rw,noexec,nosuid,size=256m,uid=0,gid=10001,mode=0770" in raw, name
 
 
 def test_deploy_requires_green_ci_before_credentials(deploy_workflow):
@@ -851,7 +856,7 @@ def test_deploy_workflow_is_manual_oidc_and_bounded(deploy_workflow):
 
 
 # ---------------------------------------------------------------------------
-# Guard: results file stays structurally sound (no fabricated measurements)
+# Guard: measured results stay structurally sound
 # ---------------------------------------------------------------------------
 
 PERFORMANCE_CSV_NUMERIC_COLUMNS = (
@@ -864,14 +869,14 @@ PERFORMANCE_CSV_NUMERIC_COLUMNS = (
 def test_performance_csv_schema_allows_future_measurements():
     """Empty until measured; once rows exist they must be well-formed."""
     text = (PROJECT_ROOT / "results" / "performance.csv").read_text(encoding="utf-8")
-    rows = [line for line in text.splitlines() if line.strip()]
+    rows = list(csv.reader(io.StringIO(text)))
     if not rows:
         return  # untouched until a real measurement exists
-    header = rows[0].split(",")
+    header = rows[0]
     assert header[0] == "run_id", "header schema changed unexpectedly"
     for row in rows[1:]:
-        values = row.split(",")
+        values = row
         assert len(values) == len(header), "data row must match header width"
         for column, value in zip(header, values):
             if column in PERFORMANCE_CSV_NUMERIC_COLUMNS and value.strip():
-                float(value)  # fabricated or malformed numbers fail here
+                float(value)  # reject malformed numeric fields

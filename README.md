@@ -1,8 +1,8 @@
-# CCD Lab: cloud-native AI serving on a $100 AWS budget
+# CCD Lab: local-first AI serving with dynamic scaling
 
-A real CPU sentiment API with opt-in text/speech adapters and a reproducible Mumbai (`ap-south-1`) deployment package. The baseline is **one EC2 `m7i-flex.large` running k3s**, not EKS, a GPU, a managed load balancer or a collection of unnecessary paid services.
+A real CPU sentiment API with opt-in text/speech adapters, a local Docker/Minikube deployment, and an optional Mumbai (`ap-south-1`) cloud deployment package. The cloud target is one EC2 `m7i-flex.large` running self-managed k3s under the existing $100 budget plan. Local development requires no AWS account.
 
-[Implementation plan](docs/IMPLEMENTATION_PLAN.md) · [Verification ledger](docs/VERIFICATION.md) · [Budget](docs/BUDGET.md)
+[Implementation plan](docs/IMPLEMENTATION_PLAN.md) · [Verification ledger](docs/VERIFICATION.md) ? [Phase 4 delivery guide](docs/PHASE_4.md) ? [Final report](docs/FINAL_REPORT.md) · [Budget](docs/BUDGET.md)
 
 ## What is included
 
@@ -22,16 +22,18 @@ From the repository root, with [uv](https://docs.astral.sh/uv/) installed:
 
 ```powershell
 # Do not overwrite an existing configured .env.
-Copy-Item .env.example .env
-uv run --python 3.12 --no-project --with-requirements requirements-dev.txt python scripts/prepare_model.py --verify
-uv run --python 3.12 --no-project --with-requirements requirements-dev.txt python -m pytest tests/ -v
-uv run --python 3.12 --no-project --with-requirements requirements.txt python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/setup-phase1.ps1
+# Continue only after setup succeeds.
+& ./.venv-review/Scripts/python.exe scripts/prepare_model.py --verify
+& ./.venv-review/Scripts/python.exe -m pytest tests/ -v
+& ./.venv-review/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
 ```
 
 In a second terminal:
 
 ```powershell
-uv run --python 3.12 --no-project --with-requirements requirements-dev.txt python scripts/smoke_test.py
+& ./.venv-review/Scripts/python.exe scripts/smoke_test.py
 ```
 
 The first package/model preparation needs Internet access; the baseline model assets total approximately 68 MB. The example leaves `API_KEY` empty for **loopback-only local development**. For auth-enabled local use, configure a nonempty key and supply the same `API_KEY` environment variable to the smoke checker. Cloud deployment refuses an empty key. Keep one worker; scale with Kubernetes replicas rather than duplicating every model in multiple API workers.
@@ -48,9 +50,13 @@ POST `/api/inference` accepts:
 
 ## Container, Kubernetes and measurements
 
-Follow [the Kubernetes guide](docs/KUBERNETES.md), then [the load-test instructions](loadtest/README.md). Render the image and optional pull-secret placeholders rather than applying an unresolved Deployment. Provide the `serving-secrets` Secret even for local mode. Metrics Server must report actual pod CPU for HPA to act.
+Follow [the Phase 2 local container/cluster guide](docs/PHASE_2.md), then [the Phase 3 experiment guide](docs/PHASE_3.md). The PowerShell helpers build/test the container, import it into Minikube, create the namespace/Secret, render manifests and verify resource metrics. Use Minikube's matching kubectl rather than the older global client. [The Kubernetes guide](docs/KUBERNETES.md) also covers optional k3s deployment. Metrics Server must report actual pod CPU for HPA to act.
 
-Default HPA: 1–3 sentiment pods, conservative scale-up/down behavior. Three pods on one 2-vCPU node still share those two CPUs and are **not high availability**. Single-replica updates can briefly interrupt service. Record replica/CPU/memory observations and latency/throughput together; a source manifest is not scaling evidence.
+Three local experiments demonstrated **1 ? 3 ? 1 ready replicas**. See the
+[measured Phase 3 report](results/ANALYSIS.md) for throughput, latency, overload
+rates, timing and resource-metric limitations.
+
+Default HPA: 1–3 sentiment pods, conservative scale-up/down behavior. Three pods on one node still share its fixed CPU capacity and are **not high availability**. Single-replica updates can briefly interrupt service. Record replica/CPU/memory observations and latency/throughput together; a source manifest is not scaling evidence.
 
 ## Optional models
 

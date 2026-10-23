@@ -8,3 +8,5 @@
 *.yml text eol=lf
 *.js text eol=lf
 Dockerfile text eol=lf
+# Captured evidence hashes refer to exact bytes, including original newlines.
+results/evidence/** -text whitespace=cr-at-eol

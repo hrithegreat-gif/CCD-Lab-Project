@@ -1,9 +1,8 @@
 # CPU-only sentiment inference image. Single Uvicorn worker, non-root, no GPU.
 # Model assets are baked at build time from the pinned revision in
 # app/model_registry.py, so the image never depends on a host model cache.
-# Build verification: CI docker job is configured but NOT yet executed here
-# (the Docker daemon was unavailable on the dev machine); the container smoke
-# test runs in CI before any image is pushed.
+# Local clean build and hardened smoke: scripts/test-container.ps1.
+# Executed evidence is recorded in docs/VERIFICATION.md; hosted CI is a separate gate.
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

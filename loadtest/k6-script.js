@@ -69,6 +69,9 @@ function envDurationSeconds(name, fallbackSeconds, maxSeconds) {
 const VUS = envInt('LOADTEST_VUS', 8, 32);
 const SUSTAINED_SECONDS = envDurationSeconds('LOADTEST_DURATION', 180, 600);
 const THINK_SECONDS = envInt('LOADTEST_THINK_TIME_MS', 0, 1000) / 1000;
+// Pace warmup/baseline so they measure low demand instead of saturating the
+// first Pod before the sustained phase. Sustained remains unpaced by default.
+const BASELINE_THINK_SECONDS = 0.1;
 const WARMUP_SECONDS = 15;
 const BASELINE_SECONDS = 30;
 const WARMUP_VUS = 2;
@@ -136,11 +139,12 @@ function isValidSentimentResponse(response) {
     return (
       body !== null && typeof body === 'object' &&
       body.status === 'success' &&
+      body.model === MODEL && typeof body.truncated === 'boolean' &&
       (body.prediction === 'positive' || body.prediction === 'negative') &&
       typeof body.confidence === 'number' &&
       body.confidence >= 0 && body.confidence <= 1 &&
-      Number.isFinite(body.tokens_processed) && body.tokens_processed > 0 &&
-      typeof body.processing_time_ms === 'number' &&
+      Number.isInteger(body.tokens_processed) && body.tokens_processed > 0 &&
+      Number.isFinite(body.processing_time_ms) &&
       body.processing_time_ms >= 0
     );
   } catch {
@@ -204,8 +208,9 @@ function doRequest(phase) {
   if (response.status >= 500) {
     console.error(`loadtest: server error status ${response.status}`);
   }
-  if (THINK_SECONDS > 0) {
-    sleep(THINK_SECONDS);
+  const think = phase === 'sustained' ? THINK_SECONDS : BASELINE_THINK_SECONDS;
+  if (think > 0) {
+    sleep(think);
   }
 }
 
@@ -253,6 +258,12 @@ export const options = {
 
 export function warmupRequest() {
   doRequest('warmup');
+}
+
+export function setup() {
+  // One coordinator timestamp, immediately before scenarios start. This is
+  // captured from logs to align resource samples with the phase boundaries.
+  console.log(`EXPERIMENT_START=${Date.now()}`);
 }
 export function baselineRequest() {
   doRequest('baseline');
@@ -306,6 +317,7 @@ export function handleSummary(data) {
   const durationMs = (data.state && data.state.testRunDurationMs) || 0;
   const durationS = durationMs > 0 ? durationMs / 1000 : 0;
   const successful = counterValue(metrics, 'requests_200');
+  const attempts = PHASES.reduce((total, phase) => total + counterValue(metrics, `attempts_${phase}`), 0);
   const summary = {
     target: TARGET,
     scenario: {
@@ -316,16 +328,18 @@ export function handleSummary(data) {
       sustained_seconds: SUSTAINED_SECONDS,
       sustained_vus: VUS,
       think_time_ms: THINK_SECONDS * 1000,
+      baseline_think_time_ms: BASELINE_THINK_SECONDS * 1000,
       no_connection_reuse: true,
       graceful_stop_seconds: 0,
     },
     totals: {
       duration_ms: durationMs,
-      attempts_total: metricValue(metrics, 'http_reqs', 'count', 0),
+      attempts_total: attempts,
+      completed_http_requests: metricValue(metrics, 'http_reqs', 'count', 0),
       // Attempt throughput counts every request incl. rejections; it must
       // not be presented as successful traffic. Successful (200,
       // body-validated) throughput is reported separately below.
-      attempt_throughput_rps: metricValue(metrics, 'http_reqs', 'rate', 0),
+      attempt_throughput_rps: durationS > 0 ? attempts / durationS : 0,
       successful_200: successful,
       successful_throughput_rps: durationS > 0 ? successful / durationS : 0,
       requests_200_invalid: counterValue(metrics, 'requests_200_invalid'),

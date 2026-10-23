@@ -23,20 +23,20 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def kubectl_json(kubectl: str, args: list[str]) -> dict:
+def kubectl_json(kubectl: str, args: list[str], context: str | None = None) -> dict:
     result = subprocess.run(
-        [kubectl, *args, "--request-timeout=10s", "-o", "json"],
-        capture_output=True, text=True,
+        [kubectl, *(["--context", context] if context else []), *args, "--request-timeout=10s", "-o", "json"],
+        capture_output=True, text=True, timeout=20,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or f"kubectl {args[0]} failed")
     return json.loads(result.stdout)
 
 
-def sample(kubectl: str, namespace: str, selector: str) -> dict:
+def sample(kubectl: str, namespace: str, selector: str, context: str | None = None) -> dict:
     record: dict = {"timestamp": datetime.now(timezone.utc).isoformat()}
 
-    hpa = kubectl_json(kubectl, ["get", "hpa", "-n", namespace])
+    hpa = kubectl_json(kubectl, ["get", "hpa", "-n", namespace], context)
     items = hpa.get("items", [])
     record["hpa"] = {
         "count": len(items),
@@ -53,16 +53,16 @@ def sample(kubectl: str, namespace: str, selector: str) -> dict:
                     if item.get("status", {}).get("currentMetrics") else None
                 ),
                 "target_cpu_percent": (
-                    item.get("status", {}).get("currentMetrics", [{}])[0]
+                    item.get("spec", {}).get("metrics", [{}])[0]
                     .get("resource", {}).get("target", {}).get("averageUtilization")
-                    if item.get("status", {}).get("currentMetrics") else None
+                    if item.get("spec", {}).get("metrics") else None
                 ),
             }
             for item in items
         ],
     }
 
-    deploy = kubectl_json(kubectl, ["get", "deployment", "-n", namespace])
+    deploy = kubectl_json(kubectl, ["get", "deployment", "-n", namespace], context)
     record["deployments"] = [
         {
             "name": item.get("metadata", {}).get("name"),
@@ -74,16 +74,17 @@ def sample(kubectl: str, namespace: str, selector: str) -> dict:
         for item in deploy.get("items", [])
     ]
 
-    pods = kubectl_json(kubectl, ["get", "pods", "-n", namespace, "-l", selector])
+    pods = kubectl_json(kubectl, ["get", "pods", "-n", namespace, "-l", selector], context)
     record["pods"] = [
         {
             "name": item.get("metadata", {}).get("name"),
             "phase": item.get("status", {}).get("phase"),
-            "ready": all(
-                condition.get("status") == "True"
+            "ready": any(
+                condition.get("type") == "Ready" and condition.get("status") == "True"
                 for condition in item.get("status", {}).get("conditions", [])
-                if condition.get("type") == "Ready"
-            ) if item.get("status", {}).get("conditions") else None,
+            ),
+            "terminating": bool(item.get("metadata", {}).get("deletionTimestamp")),
+            "restarts": sum(c.get("restartCount", 0) for c in item.get("status", {}).get("containerStatuses", [])),
         }
         for item in pods.get("items", [])
     ]
@@ -91,9 +92,9 @@ def sample(kubectl: str, namespace: str, selector: str) -> dict:
     # Metrics Server sample; absent or broken metrics are recorded as a note
     # rather than failing the run (CPU HPA cannot work without them though).
     top = subprocess.run(
-        [kubectl, "top", "pods", "-n", namespace, "-l", selector,
+        [kubectl, *(["--context", context] if context else []), "top", "pods", "-n", namespace, "-l", selector,
          "--no-headers", "--request-timeout=10s"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, timeout=20,
     )
     if top.returncode == 0 and top.stdout.strip():
         entries = []
@@ -122,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="take a single sample and exit")
     parser.add_argument("--kubectl", default="kubectl",
                         help="kubectl binary (default: kubectl on PATH)")
+    parser.add_argument("--context", help="Explicit Kubernetes context (recommended)")
     parser.add_argument("--output", default=None,
                         help="JSONL output path (default results/raw/scaling-<ts>.jsonl)")
     args = parser.parse_args(argv)
@@ -141,11 +143,11 @@ def main(argv: list[str] | None = None) -> int:
 
     deadline = None if args.once else datetime.now(timezone.utc).timestamp() + args.duration
     count = 0
-    with output.open("a", encoding="utf-8", newline="\n") as handle:
+    with output.open("x", encoding="utf-8", newline="\n") as handle:
         while True:
             try:
-                record = sample(args.kubectl, args.namespace, args.label_selector)
-            except (RuntimeError, json.JSONDecodeError) as exc:
+                record = sample(args.kubectl, args.namespace, args.label_selector, args.context)
+            except (RuntimeError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
                 print(f"record_scaling: sample failed: {exc}", file=sys.stderr)
                 return 1
             handle.write(json.dumps(record, separators=(",", ":")) + "\n")
