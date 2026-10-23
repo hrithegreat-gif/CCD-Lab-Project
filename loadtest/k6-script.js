@@ -1,8 +1,8 @@
-// Bounded k6 benchmark for the CPU sentiment API (docs/KUBERNETES.md).
+// Bounded k6 benchmark for the CPU object-detection API (docs/KUBERNETES.md).
 //
 // Scenario (sequential, in one run):
-//   warmup    15s @ 2 VUs   (fills caches, verifies the service)
-//   baseline  30s @ 2 VUs   (one-replica capacity: matches 2 inference slots)
+//   warmup    15s @ 1 VU   (fills caches, verifies the service)
+//   baseline  30s @ 1 VU    (paced low demand, below CPU scaling threshold)
 //   sustained LOADTEST_DURATION (default 180s) @ LOADTEST_VUS (default 8)
 //
 // Hard bounds: VUs capped at 32, sustained duration capped at 600s (a
@@ -38,7 +38,8 @@ import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 
 const TARGET = (__ENV.TARGET_URL || 'http://ai-model-serving.ai-serving.svc.cluster.local:8000').replace(/\/+$/, '');
-const MODEL = __ENV.LOADTEST_MODEL || 'sentiment';
+const MODEL = 'yolov8n';
+const IMAGE = open('./sample.jpg', 'b');
 const API_KEY = __ENV.API_KEY || '';
 
 function envInt(name, fallback, max) {
@@ -71,34 +72,13 @@ const SUSTAINED_SECONDS = envDurationSeconds('LOADTEST_DURATION', 180, 600);
 const THINK_SECONDS = envInt('LOADTEST_THINK_TIME_MS', 0, 1000) / 1000;
 // Pace warmup/baseline so they measure low demand instead of saturating the
 // first Pod before the sustained phase. Sustained remains unpaced by default.
-const BASELINE_THINK_SECONDS = 0.1;
+const BASELINE_THINK_SECONDS = 0.4;
 const WARMUP_SECONDS = 15;
 const BASELINE_SECONDS = 30;
-const WARMUP_VUS = 2;
-const BASELINE_VUS = 2;
+const WARMUP_VUS = 1;
+const BASELINE_VUS = 1;
 
 http.setResponseCallback(http.expectedStatuses(200, 429));
-
-const SENTENCES = [
-  'I love this product. It is absolutely wonderful!',
-  'What a fantastic experience from start to finish.',
-  'The service was excellent and the staff were kind.',
-  'Best purchase I have made in years, highly recommended.',
-  'Absolutely delightful, exceeded every expectation.',
-  'This is the greatest thing since sliced bread.',
-  'A brilliant performance that kept me engaged throughout.',
-  'I am extremely happy with the results.',
-  'I hate this product. It is terrible and disappointing.',
-  'The worst experience I have had in a long time.',
-  'Awful service, rude staff, and a broken product.',
-  'Complete waste of money, I regret this purchase.',
-  'The quality is poor and it broke within a week.',
-  'A dreadful film, boring and badly acted.',
-  'Deeply unsatisfying and frustrating to use.',
-  'I would not recommend this to anyone, ever.',
-  'Terrible support, they never answered my messages.',
-  'This update ruined everything I liked about it.',
-];
 
 const PHASES = ['warmup', 'baseline', 'sustained'];
 // Per-phase attempts and outcome counters: warmup never pollutes measured
@@ -132,31 +112,36 @@ const latencyErrors = new Trend('latency_errors_ms', true);
 const latencyInvalid = new Trend('latency_invalid_ms', true);
 
 // A response only counts as a successful prediction when the body has the
-// real /api/inference response shape.
-function isValidSentimentResponse(response) {
+// real /api/detect response shape.
+function isValidDetectResponse(response) {
   try {
     const body = response.json();
-    return (
-      body !== null && typeof body === 'object' &&
-      body.status === 'success' &&
-      body.model === MODEL && typeof body.truncated === 'boolean' &&
-      (body.prediction === 'positive' || body.prediction === 'negative') &&
-      typeof body.confidence === 'number' &&
-      body.confidence >= 0 && body.confidence <= 1 &&
-      Number.isInteger(body.tokens_processed) && body.tokens_processed > 0 &&
-      Number.isFinite(body.processing_time_ms) &&
-      body.processing_time_ms >= 0
-    );
-  } catch {
-    return false;
-  }
+    if (!(body && body.status === 'success' && body.model === MODEL &&
+      Number.isInteger(body.image?.width) && body.image.width > 0 &&
+      Number.isInteger(body.image?.height) && body.image.height > 0 &&
+      Array.isArray(body.detections) && Number.isInteger(body.count) &&
+      body.count === body.detections.length && body.count <= 300 &&
+      Number.isFinite(body.processing_time_ms) && body.processing_time_ms >= 0)) return false;
+    let previous = 1;
+    return body.detections.every(d => {
+      const b = d.box;
+      const valid = Number.isInteger(d.class_id) && d.class_id >= 0 && d.class_id < 80 &&
+        typeof d.label === 'string' && d.label.length > 0 &&
+        Number.isFinite(d.confidence) && d.confidence >= 0 && d.confidence <= previous &&
+        b && [b.x1,b.y1,b.x2,b.y2].every(Number.isFinite) &&
+        0 <= b.x1 && b.x1 < b.x2 && b.x2 <= body.image.width &&
+        0 <= b.y1 && b.y1 < b.y2 && b.y2 <= body.image.height;
+      previous = d.confidence;
+      return valid;
+    });
+  } catch { return false; }
 }
 
 function recordOutcome(response, phase, started) {
   const latency = Date.now() - started;
   const status = response.status;
   if (status === 200) {
-    if (isValidSentimentResponse(response)) {
+    if (isValidDetectResponse(response)) {
       requests200.add(1);
       COUNTERS[`success_200_${phase}`].add(1);
       LATENCY_TRENDS[phase].add(latency);
@@ -190,20 +175,18 @@ function doRequest(phase) {
   // boundary, deadline, or connection error) stays visible as
   // attempts minus completions, never as a success.
   COUNTERS[`attempts_${phase}`].add(1);
-  const sentence = SENTENCES[Math.floor(Math.random() * SENTENCES.length)];
-  const payload = JSON.stringify({ model: MODEL, input: sentence });
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'image/jpeg' };
   if (API_KEY) {
     headers['Authorization'] = `Bearer ${API_KEY}`;
   }
   const started = Date.now();
-  const response = http.post(`${TARGET}/api/inference`, payload, { headers });
+  const response = http.post(`${TARGET}/api/detect`, IMAGE, { headers });
   recordOutcome(response, phase, started);
   check(response, {
     'status is 200 or 429': (r) => r.status === 200 || r.status === 429,
   });
   if (response.status === 200) {
-    check(response, { 'valid sentiment response': (r) => isValidSentimentResponse(r) });
+    check(response, { 'valid detection response': (r) => isValidDetectResponse(r) });
   }
   if (response.status >= 500) {
     console.error(`loadtest: server error status ${response.status}`);

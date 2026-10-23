@@ -15,8 +15,7 @@
 #      <own-account>.dkr.ecr.ap-south-1.amazonaws.com/<ECR_REPOSITORY>:<40hex>
 #      (own account read via aws sts get-caller-identity)
 #   2. apply the namespace BEFORE any Secret is created in it
-#   3. fetch a NONBLANK api-key (required) and an optional groq-api-key from
-#      SSM SecureString parameters $SSM_PARAMETER_PREFIX/{api-key,groq-api-key}
+#   3. fetch the required NONBLANK SSM SecureString $SSM_PARAMETER_PREFIX/api-key
 #      (trimmed); secret values are never printed
 #   4. create/update Secret serving-secrets from those values via stdin
 #   5. refresh the ecr-pull imagePullSecret from an ECR token via stdin
@@ -135,20 +134,9 @@ API_KEY="$(aws ssm get-parameter \
 API_KEY="$(printf '%s' "$API_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 [ -n "$API_KEY" ] || die "SSM $SSM_PARAMETER_PREFIX/api-key must be nonblank in cloud deployments"
 
-GROQ_API_KEY="$(aws ssm get-parameter \
-    --name "$SSM_PARAMETER_PREFIX/groq-api-key" --with-decryption \
-    --query Parameter.Value --output text 2>/dev/null || true)"
-GROQ_API_KEY="$(printf '%s' "$GROQ_API_KEY" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-if [ -n "$GROQ_API_KEY" ]; then
-    info "groq-api-key found; secret will include the optional key"
-else
-    info "groq-api-key not configured (optional); skipping"
-fi
-
 info "creating/updating secret serving-secrets (contents not printed)"
 DEPLOY_SECRET_NAMESPACE="$NAMESPACE" \
 DEPLOY_API_KEY="$API_KEY" \
-DEPLOY_GROQ_API_KEY="$GROQ_API_KEY" \
 python3 - <<'PY' | "${KUBECTL[@]}" apply -f -
 import json, os
 secret = {
@@ -157,8 +145,6 @@ secret = {
                  "namespace": os.environ["DEPLOY_SECRET_NAMESPACE"]},
     "stringData": {"api-key": os.environ["DEPLOY_API_KEY"]},
 }
-if os.environ.get("DEPLOY_GROQ_API_KEY"):
-    secret["stringData"]["groq-api-key"] = os.environ["DEPLOY_GROQ_API_KEY"]
 print(json.dumps(secret))
 PY
 
@@ -187,7 +173,7 @@ print(json.dumps(secret))
 PY
     unset ECR_TOKEN
 fi
-unset API_KEY GROQ_API_KEY
+unset API_KEY
 
 # --- rendered manifests, rollout --------------------------------------------
 RENDERED="$(mktemp /tmp/ai-serving-rendered.XXXXXX.yaml)"

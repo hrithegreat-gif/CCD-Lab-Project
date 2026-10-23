@@ -29,6 +29,6 @@ output "ssm_deploy_document_name" {
 }
 
 output "ssm_parameter_prefix" {
-  description = "SSM parameter prefix for operator SecureStrings (api-key, optional groq-api-key)."
+  description = "SSM parameter prefix for operator SecureStrings (api-key only)."
   value       = var.ssm_parameter_prefix
 }

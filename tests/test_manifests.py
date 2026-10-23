@@ -202,9 +202,9 @@ def test_env_from_secret_and_limits(deployment):
     assert api_key["name"] == "serving-secrets"
     assert api_key["key"] == "api-key"
     assert api_key.get("optional", False) is False
-    groq = env["GROQ_API_KEY"]["valueFrom"]["secretKeyRef"]
-    assert groq == {"name": "serving-secrets", "key": "groq-api-key", "optional": True}
-    assert env["MAX_REQUEST_BYTES"]["value"] == "65536"
+    assert set(name for name in env if name.endswith('API_KEY')) == {'API_KEY'}
+    assert env["MAX_REQUEST_BYTES"]["value"] == "5246976"
+    assert env["MAX_CONCURRENT_INFERENCES"]["value"] == "2"
     assert env["BACKGROUND_MODEL_LOAD"]["value"] == "true"
     assert env["MODEL_CACHE_DIR"]["value"] == "/cache"
     assert env["MODEL_LOCAL_FILES_ONLY"]["value"] == "true"
@@ -313,7 +313,7 @@ def test_load_generator_script_volume_is_configmap(load_generator):
 
 def test_k6_script_targets_inference_with_bearer(k6_script_text):
     assert "k6/http" in k6_script_text
-    assert "/api/inference" in k6_script_text
+    assert "/api/detect" in k6_script_text
     assert "Bearer ${API_KEY}" in k6_script_text
     assert "expectedStatuses(200, 429)" in k6_script_text
     assert "requests_429" in k6_script_text
@@ -376,12 +376,12 @@ def test_k6_script_labels_attempt_throughput_not_goodput(k6_script_text):
     )
 
 
-def test_k6_script_validates_real_sentiment_response_shape(k6_script_text):
-    assert "isValidSentimentResponse" in k6_script_text
+def test_k6_script_validates_real_detection_response_shape(k6_script_text):
+    assert "isValidDetectResponse" in k6_script_text
     assert "body.status === 'success'" in k6_script_text
-    assert "body.prediction === 'positive'" in k6_script_text
-    assert "body.tokens_processed" in k6_script_text
-    assert "valid sentiment response" in k6_script_text
+    assert "body.count === body.detections.length" in k6_script_text
+    assert "body.image.width" in k6_script_text
+    assert "valid detection response" in k6_script_text
 
 
 def test_k6_script_never_logs_the_api_key(k6_script_text):
@@ -462,6 +462,7 @@ const state = globalThis.__K6_STUB__ = {
   respond: () => ({ status: 0 }),
 };
 globalThis.__ENV = {};
+globalThis.open = () => new Uint8Array([255,216,255]).buffer;
 const mod = await import("./k6-script.mjs");
 
 assert(mod.options.noConnectionReuse === true, "noConnectionReuse true");
@@ -482,12 +483,14 @@ function respond(status, body) {
     },
   });
 }
-const VALID = { status: "success", model: "sentiment", prediction: "positive",
-  confidence: 0.87, processing_time_ms: 6.5, tokens_processed: 9, truncated: false };
+const VALID = { status: "success", model: "yolov8n", image: {width:640,height:480},
+  count:1, detections:[{class_id:15,label:"cat",confidence:.87,box:{x1:1,y1:2,x2:300,y2:400}}],
+  processing_time_ms: 120 };
+
 
 respond(200, VALID);
 mod.sustainedRequest();                                   // 1 valid 200
-respond(200, { status: "success", prediction: "positive", confidence: 0.5 });
+respond(200, { status: "success", count: 1, detections: [] });
 mod.sustainedRequest();                                   // 2 malformed 200
 respond(429, { detail: "capacity" });
 mod.sustainedRequest();                                   // 3 rate limited
@@ -516,7 +519,7 @@ assert(state.trends.latency_success_sustained_ms.length === 1, "success trend va
 assert(state.trends.latency_invalid_ms.length === 1, "invalid trend recorded");
 assert(state.trends.latency_rate_limited_ms.length === 1, "429 trend recorded");
 assert(state.trends.latency_errors_ms.length === 1, "error trend recorded");
-const shapeChecks = state.checks.filter((c) => c.name === "valid sentiment response");
+const shapeChecks = state.checks.filter((c) => c.name === "valid detection response");
 assert(shapeChecks.length === 2 && shapeChecks[0].pass && !shapeChecks[1].pass,
   "response shape check ran on both 200s with correct results");
 

@@ -1,0 +1,86 @@
+{
+  "target": "http://ai-model-serving.ai-serving.svc.cluster.local:8000",
+  "scenario": {
+    "warmup_seconds": 15,
+    "warmup_vus": 1,
+    "baseline_seconds": 30,
+    "baseline_vus": 1,
+    "sustained_seconds": 180,
+    "sustained_vus": 8,
+    "think_time_ms": 0,
+    "baseline_think_time_ms": 400,
+    "no_connection_reuse": true,
+    "graceful_stop_seconds": 0
+  },
+  "totals": {
+    "duration_ms": 224988.128033,
+    "attempts_total": 43498,
+    "completed_http_requests": 43489,
+    "attempt_throughput_rps": 193.33464561125626,
+    "successful_200": 2203,
+    "successful_throughput_rps": 9.791627759473942,
+    "requests_200_invalid": 0,
+    "requests_429": 41286,
+    "requests_4xx": 0,
+    "requests_5xx": 0,
+    "requests_other": 0
+  },
+  "phases": {
+    "warmup": {
+      "phase_duration_s": 15,
+      "attempts": 29,
+      "completed": 29,
+      "interrupted": 0,
+      "success_200": 29,
+      "invalid_200": 0,
+      "rate_limited": 0,
+      "errors_4xx": 0,
+      "errors_5xx": 0,
+      "other": 0,
+      "attempt_throughput_rps": 1.9333333333333333,
+      "successful_throughput_rps": 1.9333333333333333,
+      "latency_success_p95_ms": 138.39999999999998,
+      "latency_success_mean_ms": 124.41379310344827
+    },
+    "baseline": {
+      "phase_duration_s": 30,
+      "attempts": 58,
+      "completed": 57,
+      "interrupted": 1,
+      "success_200": 57,
+      "invalid_200": 0,
+      "rate_limited": 0,
+      "errors_4xx": 0,
+      "errors_5xx": 0,
+      "other": 0,
+      "attempt_throughput_rps": 1.9333333333333333,
+      "successful_throughput_rps": 1.9,
+      "latency_success_p95_ms": 139.79999999999998,
+      "latency_success_mean_ms": 123.10526315789474
+    },
+    "sustained": {
+      "phase_duration_s": 180,
+      "attempts": 43411,
+      "completed": 43403,
+      "interrupted": 8,
+      "success_200": 2117,
+      "invalid_200": 0,
+      "rate_limited": 41286,
+      "errors_4xx": 0,
+      "errors_5xx": 0,
+      "other": 0,
+      "attempt_throughput_rps": 241.17222222222222,
+      "successful_throughput_rps": 11.761111111111111,
+      "latency_success_p95_ms": 491,
+      "latency_success_mean_ms": 391.16154936230515
+    }
+  },
+  "latency_ms": {
+    "rate_limited_p95": 53,
+    "errors_p95": null,
+    "invalid_200_p95": null,
+    "attempts_overall_p95": 117.39101719999925
+  },
+  "checks_rate": 1,
+  "http_req_failed_rate": 0
+}

@@ -11,19 +11,14 @@ def test_original_mumbai_demo_estimate():
     assert result["aws_total"] == "17.86"
     assert result["aws_line_items"]["ec2"] == "10.08"
     assert result["aws_line_items"]["ebs_gp3"] == "3.65"
-    assert result["groq_total_separate_billing"] == "0.00"
     assert result["region"] == "ap-south-1"
 
 
-def test_two_month_project_includes_idle_storage_and_groq():
+def test_two_month_project_includes_idle_storage():
     result = estimate(Usage(
         running_hours=D("200"), storage_months=D("2"),
-        groq_input_million=D("1"), groq_output_million=D("1"),
-        groq_audio_hours=D("5"),
     ))
     assert result["aws_total"] == "35.71"
-    assert result["groq_total_separate_billing"] == "0.95"
-    assert result["combined_total"] == "36.66"
 
 
 def test_always_on_estimate():

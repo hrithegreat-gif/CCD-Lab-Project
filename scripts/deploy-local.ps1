@@ -1,7 +1,7 @@
 # Fixed local profile only. Does not touch AWS or select a remote Kubernetes context.
 [CmdletBinding()]
 param(
-    [string]$Image = 'ai-model-serving:phase2',
+    [string]$Image = 'ai-model-serving:detection',
     [ValidateRange(2,16)][int]$Cpus = 4,
     [ValidateRange(4096,32768)][int]$MemoryMb = 6144
 )

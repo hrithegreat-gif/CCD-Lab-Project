@@ -1,7 +1,7 @@
 """Offline Mumbai lab estimate. No AWS login, API call, or resource changes.
 
 Uses public rates checked on 2026-10-13, not account-specific discounts.
-All arithmetic uses Decimal. AWS credits do not pay Groq charges.
+All arithmetic uses Decimal. This estimates AWS resources only.
 """
 from __future__ import annotations
 
@@ -21,9 +21,6 @@ RATES = {
     "s3_standard_gb_month": D("0.025"),
     "s3_put_request": D("0.000005"),
     "s3_get_request": D("0.0000004"),
-    "groq_gpt_oss_120b_input_million": D("0.15"),
-    "groq_gpt_oss_120b_output_million": D("0.60"),
-    "groq_whisper_audio_hour": D("0.04"),
 }
 
 
@@ -48,9 +45,6 @@ class Usage:
     puts_per_month: Decimal = D("1000")
     gets_per_month: Decimal = D("10000")
     reserve_per_month: Decimal = D("3")  # monitoring/light usage allowance, NOT a cap
-    groq_input_million: Decimal = D("0")
-    groq_output_million: Decimal = D("0")
-    groq_audio_hours: Decimal = D("0")
 
 
 def estimate(usage: Usage) -> dict:
@@ -78,11 +72,6 @@ def estimate(usage: Usage) -> dict:
         "monitoring_and_light_usage_reserve": months * usage.reserve_per_month,
     }
     aws_total = sum(costs.values(), D("0"))
-    groq = (
-        usage.groq_input_million * RATES["groq_gpt_oss_120b_input_million"]
-        + usage.groq_output_million * RATES["groq_gpt_oss_120b_output_million"]
-        + usage.groq_audio_hours * RATES["groq_whisper_audio_hour"]
-    )
     money = lambda value: str(value.quantize(D("0.01"), rounding=ROUND_HALF_UP))
     return {
         "currency": "USD",
@@ -94,8 +83,6 @@ def estimate(usage: Usage) -> dict:
         "instances": usage.instances,
         "aws_line_items": {name: money(value) for name, value in costs.items()},
         "aws_total": money(aws_total),
-        "groq_total_separate_billing": money(groq),
-        "combined_total": money(aws_total + groq),
         "caveats": [
             "Estimate, not a quote or spending cap; rates can change.",
             "Before taxes, account free allowances, credits, or discounts.",
@@ -103,7 +90,6 @@ def estimate(usage: Usage) -> dict:
             "No large Internet/cross-region transfer or excessive logs/custom metrics.",
             "Ephemeral IPv4 released on instance stop; a retained Elastic IP costs extra.",
             "Storage is charged for all selected months, including stopped periods.",
-            "Groq is optional and billed separately from AWS; free quotas not subtracted.",
         ],
     }
 
@@ -117,9 +103,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ecr-gb", type=nonnegative, default=D("5"))
     parser.add_argument("--s3-gb", type=nonnegative, default=D("5"))
     parser.add_argument("--reserve", type=nonnegative, default=D("3"), help="Monthly reserve, not a hard cap")
-    parser.add_argument("--groq-input-million", type=nonnegative, default=D("0"))
-    parser.add_argument("--groq-output-million", type=nonnegative, default=D("0"))
-    parser.add_argument("--groq-audio-hours", type=nonnegative, default=D("0"))
     args = parser.parse_args(argv)
     try:
         result = estimate(Usage(
@@ -127,9 +110,6 @@ def main(argv: list[str] | None = None) -> int:
             instances=args.instances, disk_gib=args.disk_gib,
             ecr_gb=args.ecr_gb, s3_gb=args.s3_gb,
             reserve_per_month=args.reserve,
-            groq_input_million=args.groq_input_million,
-            groq_output_million=args.groq_output_million,
-            groq_audio_hours=args.groq_audio_hours,
         ))
     except ValueError as exc:
         parser.error(str(exc))

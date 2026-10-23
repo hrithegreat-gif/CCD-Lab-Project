@@ -3,12 +3,13 @@
 #
 # Prerequisites (docs/KUBERNETES.md):
 #   kubectl -n ai-serving create configmap k6-script \
-#       --from-file=k6-script.js=loadtest/k6-script.js
+#       --from-file=k6-script.js=loadtest/k6-script.js \
+#       --from-file=sample.jpg=loadtest/sample.jpg
 #   kubectl -n ai-serving apply -f k8s/load-generator.yaml
 #
 # The Job targets the Service DNS name so traffic is balanced across replicas
 # (a Service port-forward pins one Pod and is for smoke checks only).
-# It is bounded: defaults 15s warm-up @2VU, 30s baseline @2VU, 180s sustained
+# It is bounded: defaults 15s warm-up @1VU, 30s baseline @1VU, 180s sustained
 # @8VU; VUs capped at 32, sustained duration capped at 600s, and
 # activeDeadlineSeconds hard-stops the Job after 15 minutes.
 # API_KEY comes from Secret serving-secrets and is never logged or echoed.

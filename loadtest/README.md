@@ -1,9 +1,8 @@
 # Load testing
 
-For the implemented local runner, three-repeat workflow, analysis commands and
-acceptance criteria, follow [Phase 3](../docs/PHASE_3.md). It uses an explicit
-context and matching kubectl, preserves unique raw run folders, and waits for
-idle recovery between runs.
+This guide covers the current object-detection load test. For cluster setup,
+follow the [runbook](../docs/RUNBOOK.md); measured local results are in
+[results/ANALYSIS.md](../results/ANALYSIS.md).
 
 Real, bounded k6 benchmark for the deployed service. Nothing in this directory
 produces performance numbers by itself; results exist only after a measured run
@@ -23,7 +22,7 @@ which is git-ignored).
 | Phase | Duration | VUs | Intent |
 | --- | --- | --- | --- |
 | warmup | 15s | 2 | fill caches, verify the service answers |
-| baseline | 30s | 2 | one-replica capacity (2 inference slots) |
+| baseline | 30s | 1 | one-replica baseline with low request rate |
 | sustained | default 180s, cap 600s | default 8, cap 32 | drive CPU toward the HPA target |
 
 Warm-up and baseline now pause 100 ms between requests per virtual user. Sustained
@@ -65,19 +64,20 @@ Measured results are separated by construction:
   (`attempt_throughput_rps`, including 429/4xx/5xx), clearly distinguished
   from successful traffic; the successful (200, body-validated) rate is
   `successful_throughput_rps`.
-- Every 200 body is validated against the real `/api/inference` response
-  shape (status, prediction, confidence, tokens_processed,
-  processing_time_ms) via the `valid sentiment response` check.
+- Every 200 body is validated against `/api/detect`: model/status, image size,
+  count, ordered class detections, confidence, finite boxes, and processing
+  time. A malformed 200 is never counted as a successful response.
 
-Every request POSTs synthetic English sentences to `/api/inference` with
-`Authorization: Bearer $API_KEY` when `API_KEY` is set. The key is never
-logged, echoed or written to summaries. There is no jobs endpoint and no
-queue/database anywhere in this pipeline.
+Every request POSTs the binary `loadtest/sample.jpg` to `/api/detect` with
+`Content-Type: image/jpeg` and `Authorization: Bearer $API_KEY` when `API_KEY`
+is set. The key is never logged, echoed or written to summaries. There is no
+jobs endpoint, queue, or database in this pipeline.
 
 ## Run in-cluster (representative multi-replica load)
 
     kubectl -n ai-serving create configmap k6-script \
-        --from-file=k6-script.js=loadtest/k6-script.js
+      --from-file=k6-script.js=loadtest/k6-script.js \
+      --from-file=sample.jpg=loadtest/sample.jpg
     kubectl -n ai-serving apply -f k8s/load-generator.yaml
     kubectl -n ai-serving logs job/load-generator -f
 
@@ -115,11 +115,18 @@ from Metrics Server) to results/raw/scaling-<timestamp>.jsonl.
 
 ## Documenting results
 
-Use the [Phase 3 runner and analyzer](../docs/PHASE_3.md) to preserve k6 stdout,
-phase timing, resource samples and source provenance automatically. Completed
-containers do not support reliable `kubectl cp`; the runner parses the summary
-from retained Job logs. It produces separate baseline, sustained and recovery
-rows in `results/performance.csv`, with figures and compact evidence.
+Use the bounded local runner and analyzer to preserve k6 stdout, phase timing,
+resource samples and source provenance automatically:
+
+  python scripts/run_experiments.py --kubectl kubectl --context ai-serving-local \
+    --prefix detection-YYYYMMDD --runs 3
+  python scripts/analyze_experiments.py results/raw/detection-YYYYMMDD
+
+Choose a unique DNS-safe prefix. The runner requires an idle one-replica
+deployment, waits for recovery after every run, retains completed Jobs, and
+preserves raw summaries. It produces baseline, sustained and recovery rows in
+`results/performance.csv`, plots, and compact evidence. Do not overwrite or
+hand-edit generated measurements.
 
 Use per-phase successful throughput and latency, excluding warm-up and fast
 rejections. Recovery has no generated requests. The executed local experiments

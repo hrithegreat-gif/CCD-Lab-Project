@@ -87,13 +87,14 @@ def main() -> int:
     provenance = {
         'recorded_at': datetime.now(timezone.utc).isoformat(),
         'context': args.context,
+        'model': json.loads((ROOT/'models/yolov8n-export.json').read_text(encoding='utf-8')),
         'versions': json.loads(command('version', '-o', 'json')),
         'nodes': get('nodes'),
         'deployment': get('deployment', 'ai-model-serving', '-n', 'ai-serving'),
         'hpa': get('hpa', 'ai-model-serving', '-n', 'ai-serving'),
         'pods': get('pods', '-n', 'ai-serving', '-l', SELECTOR),
         'source_sha256': {name: hashlib.sha256((ROOT/name).read_bytes()).hexdigest()
-                          for name in ['loadtest/k6-script.js', 'k8s/load-generator.yaml', 'scripts/record_scaling.py']},
+                          for name in ['loadtest/k6-script.js', 'loadtest/sample.jpg', 'k8s/load-generator.yaml', 'scripts/record_scaling.py']},
         'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'working_tree_dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip()),
     }
@@ -104,10 +105,10 @@ def main() -> int:
                 entry.pop('value', None)
     write_json(root/'environment.json', provenance)
     # Preserve exact measured sources even when later fixes change the working tree.
-    for source in ['loadtest/k6-script.js', 'scripts/record_scaling.py', 'scripts/run_experiments.py']:
+    for source in ['loadtest/k6-script.js', 'loadtest/sample.jpg', 'scripts/record_scaling.py', 'scripts/run_experiments.py']:
         (root/Path(source).name).write_bytes((ROOT/source).read_bytes())
     config = json.loads(command('create', 'configmap', 'k6-script', '-n', 'ai-serving',
-                                '--from-file=' + str(ROOT/'loadtest/k6-script.js'), '--dry-run=client', '-o', 'json'))
+                                '--from-file=' + str(ROOT/'loadtest/k6-script.js'), '--from-file=' + str(ROOT/'loadtest/sample.jpg'), '--dry-run=client', '-o', 'json'))
     command('apply', '-f', '-', stdin=json.dumps(config))
 
     for index in range(1, args.runs + 1):

@@ -1,4 +1,4 @@
-# Deployment ai-model-serving: single-worker CPU sentiment inference.
+# Deployment ai-model-serving: single-worker CPU object detection.
 #
 # Sizing for the 2 vCPU / 8 GiB single-node k3s lab (docs/KUBERNETES.md):
 #   requests  cpu 500m / memory 512Mi  -> HPA utilization target is measurable;
@@ -71,16 +71,12 @@ spec:
                 secretKeyRef:
                   name: serving-secrets
                   key: api-key
-            # Optional Groq extension credential; absent when unset.
-            - name: GROQ_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: serving-secrets
-                  key: groq-api-key
-                  optional: true
-            # 65536 >= max_input_chars*12+1024 for the default 2000-char input.
+            # Image byte limit plus bounded HTTP framing allowance.
             - name: MAX_REQUEST_BYTES
-              value: "65536"
+              value: "5246976"
+            # Measured 1-CPU calibration: two slots improved successful throughput.
+            - name: MAX_CONCURRENT_INFERENCES
+              value: "2"
             # Serve liveness while the model loads in the background.
             - name: BACKGROUND_MODEL_LOAD
               value: "true"

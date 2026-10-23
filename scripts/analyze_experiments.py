@@ -108,7 +108,7 @@ def derive(folder: Path, environment: dict):
             'run_id': folder.name, 'scenario': phase,
             'hardware': 'Windows 11 / Docker WSL2; node limit 4 CPU / 6 GiB',
             'kubernetes_version': environment['versions']['serverVersion']['gitVersion'],
-            'model_revision': '0b6928efcb76139cae2c6881d49cda67fe119f42',
+            'model_revision': environment.get('model', {}).get('sha256', 'unrecorded'),
             'image_tag': deployment['image'],
             'pod_cpu_millicores': round(statistics.mean(r[0] for r in resources),3) if resources else '',
             'pod_memory_mib': round(statistics.mean(r[1] for r in resources),3) if resources else '',

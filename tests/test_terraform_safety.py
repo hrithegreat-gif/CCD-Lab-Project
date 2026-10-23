@@ -27,7 +27,7 @@ def test_managed_ssm_policy_does_not_bypass_operator_parameter_scope():
         assert re.search(r'Effect\s*=\s*"Deny"', iam)
         assert re.search(r"NotResource\s*=", iam)
         assert '"ssm:GetParameter"' in iam and '"ssm:GetParameters"' in iam
-        assert "parameter${var.ssm_parameter_prefix}/*" in iam
+        assert "parameter${var.ssm_parameter_prefix}/api-key" in iam
 
 
 def test_kms_decrypt_targets_keys_and_is_constrained_to_ssm_parameters():

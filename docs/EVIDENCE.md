@@ -38,3 +38,51 @@ the non-root runtime user. Rebuilt hardened container acceptance passed: real ca
 `sha256:db42fa6870a3061e1adeb9da93863651b6066c4d4a073931c7ae2b6744832321`.
 Observed 150.3 MiB idle snapshot is not peak-memory calibration. AWS has not
 been deployed; no cloud acceptance is claimed.
+
+Migration phase 7 (2026-10-23): three local detection experiment Jobs completed
+on the `ai-serving-local` Minikube context. `scripts/analyze_experiments.py`
+generated nine phase rows, figures, and compact evidence. Every run went from
+one ready replica to three and returned to one; scale-out was 39.188, 84.251,
+and 84.310 seconds, and return-to-one was 439.283, 424.242, and 424.310
+seconds. Mean sustained successful goodput was 10.726 requests/second and mean
+successful-response p95 was 483.0 ms. Sustained resource metric coverage was
+incomplete; details are in `results/ANALYSIS.md`. Two-slot calibration measured
+473.0 MiB process high-water RSS for the tested concurrent 12-MP uploads and
+improved local small-image throughput; Kubernetes is configured for two slots.
+
+Migration phase 8 repository checks (2026-10-23):
+`.venv-review/Scripts/python.exe -m pytest tests/test_terraform_safety.py
+tests/test_manifests.py -q -p no:cacheprovider --basetemp=.validation/pytest-infra`:
+69 passed. `bash infra/terraform/tests/deploy_doc_safety_test.sh`: 17 passed.
+Terraform 1.9.8 checks: `terraform fmt -check -recursive`, `terraform init
+-backend=false -input=false`, `terraform validate`, and `terraform test` all
+passed; all 8 mock-provider policy tests passed. Init installed the locked AWS
+provider v5.100.0 without configuring a backend. AWS provisioning/deployment
+and hosted CI acceptance are owner/environment-dependent and were not executed.
+
+Migration phase 9 documentation (2026-10-23): the detection API, architecture,
+runbook, AWS/CI/budget notes, and measured local results are documented. The
+final report makes no AWS or hosted CI acceptance claim.
+
+Current-session test commands: `.venv-review/Scripts/python.exe -m pytest
+tests/ -q -p no:cacheprovider --tb=short --basetemp=.validation/pytest-phase7`
+(276 passed); `node --test tests/frontend/studio-core.test.mjs` (60 passed);
+and `scripts/analyze_experiments.py results/raw/detection-20261023` (nine rows).
+The first pytest attempt used Windows' inaccessible default temp directory and
+failed during fixture setup; the workspace-local `--basetemp` rerun passed.
+
+Post-validation check (2026-10-23): `scripts/prepare_model.py --verify`
+downloaded/verified the pinned 12,851,044-byte ONNX asset and detected the
+expected cat, cup, and person samples. The loopback API health endpoints
+returned 200, while unauthenticated model/detection routes returned 401; the
+live smoke script therefore was not accepted without an authorized API key.
+No key was read from local environment files. See `docs/AWS_SETUP.md` for the
+owner-operated safe SSM key retrieval and cloud smoke procedure.
+
+Hardened-container acceptance on the current worktree (2026-10-23):
+`scripts/test-container.ps1 -Port 8001` passed. It built image
+`sha256:ef15d3731b7850b449e41daadb5ed14e66f250282a1f84819083d6ed70c101b3`,
+ran read-only/non-root with a temporary generated API key, passed real
+detection, authorization, validation, and metrics checks, and passed
+`pip check`. The temporary test container was removed. The observed
+164.3-MiB container snapshot is not a peak-memory measurement.

@@ -86,7 +86,7 @@ resource "aws_iam_role_policy" "node_scoped" {
         Sid      = "SsmReadOperatorParameters"
         Effect   = "Allow"
         Action   = ["ssm:GetParameter", "ssm:GetParameters"]
-        Resource = ["arn:aws:ssm:${var.aws_region}:${local.account_id}:parameter${var.ssm_parameter_prefix}/*"]
+        Resource = ["arn:aws:ssm:${var.aws_region}:${local.account_id}:parameter${var.ssm_parameter_prefix}/api-key"]
       },
       {
         # Required for `ssm get-parameter --with-decryption` on SecureStrings.
@@ -107,21 +107,21 @@ resource "aws_iam_role_policy" "node_scoped" {
             "kms:ViaService" = "ssm.${var.aws_region}.amazonaws.com"
           }
           StringLike = {
-            "kms:EncryptionContext:PARAMETER_ARN" = "arn:aws:ssm:${var.aws_region}:${local.account_id}:parameter${var.ssm_parameter_prefix}/*"
+            "kms:EncryptionContext:PARAMETER_ARN" = "arn:aws:ssm:${var.aws_region}:${local.account_id}:parameter${var.ssm_parameter_prefix}/api-key"
           }
         }
       },
       {
         # AmazonSSMManagedInstanceCore grants ssm:GetParameter(s) on Resource:*;
-        # the prefix Allow above does NOT restrict that managed grant. Explicitly
-        # deny reads of any parameter OUTSIDE the lab prefix (NotResource inside
+        # the exact-key Allow above does NOT restrict that managed grant. Explicitly
+        # deny reads of any parameter other than the exact API key (NotResource inside
         # a Deny). Residual accepted and documented: Patch Manager snapshot
         # access (GetDeployablePatchSnapshotForInstance) granted by the managed
         # policy is out of scope for this lab.
-        Sid         = "DenySsmParameterReadsOutsidePrefix"
+        Sid         = "DenySsmParameterReadsOutsideApiKey"
         Effect      = "Deny"
         Action      = ["ssm:GetParameter", "ssm:GetParameters"]
-        NotResource = ["arn:aws:ssm:${var.aws_region}:${local.account_id}:parameter${var.ssm_parameter_prefix}/*"]
+        NotResource = ["arn:aws:ssm:${var.aws_region}:${local.account_id}:parameter${var.ssm_parameter_prefix}/api-key"]
       },
       {
         Sid    = "LogsWriteLabGroups"

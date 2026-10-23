@@ -34,16 +34,7 @@ mock_provider "aws" {
   override_data {
     target = data.aws_iam_policy_document.deploy_trust
     values = {
-      json = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-          {
-            Effect    = "Allow"
-            Action    = "sts:AssumeRoleWithWebIdentity"
-            Principal = { Federated = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" }
-          }
-        ]
-      })
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Principal\":{\"Federated\":\"arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com\"}}]}"
     }
   }
 }
@@ -102,7 +93,7 @@ run "node_policy_denies_parameters_outside_prefix" {
   assert {
     condition = length([
       for s in jsondecode(aws_iam_role_policy.node_scoped.policy).Statement :
-      s if s.Sid == "DenySsmParameterReadsOutsidePrefix" && s.Effect == "Deny" && can(s.NotResource)
+      s if s.Sid == "DenySsmParameterReadsOutsideApiKey" && s.Effect == "Deny" && length(lookup(s, "NotResource", [])) > 0 && alltrue([for arn in lookup(s, "NotResource", []) : endswith(arn, "/ccd-lab/api-key")])
     ]) == 1
     error_message = "node policy: missing explicit Deny (NotResource) for parameter reads outside the prefix"
   }
@@ -122,7 +113,7 @@ run "kms_decrypt_constrained_to_ssm_context" {
   assert {
     condition = length([
       for s in jsondecode(aws_iam_role_policy.node_scoped.policy).Statement :
-      s if s.Sid == "KmsDecryptForSsmSecureStrings" && can(try(s.Condition.StringEquals["kms:ViaService"], null)) && s.Condition.StringEquals["kms:ViaService"] == "ssm.ap-south-1.amazonaws.com" && can(try(s.Condition.StringLike["kms:EncryptionContext:PARAMETER_ARN"], null))
+      s if s.Sid == "KmsDecryptForSsmSecureStrings" && lookup(lookup(lookup(s, "Condition", {}), "StringEquals", {}), "kms:ViaService", "") == "ssm.ap-south-1.amazonaws.com" && lookup(lookup(lookup(s, "Condition", {}), "StringLike", {}), "kms:EncryptionContext:PARAMETER_ARN", "") != ""
     ]) == 1
     error_message = "node policy: kms:Decrypt statement must constrain kms:ViaService and the PARAMETER_ARN encryption context"
   }

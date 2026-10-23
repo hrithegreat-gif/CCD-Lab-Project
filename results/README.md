@@ -1,23 +1,21 @@
-# Measured results and evidence
+# Results and evidence
 
-Three local Minikube experiments are now recorded in [ANALYSIS.md](ANALYSIS.md),
-with nine measured rows in [performance.csv](performance.csv), scaling plots and
-compact evidence under `results/evidence/phase3-20261022/`. Each run demonstrated
-1 ? 3 ? 1 ready replicas. The report explicitly includes overload rejections,
-interrupted attempts and incomplete/windowed resource metrics. These are local
-measurements, not EC2 results or proof of hosted CI.
+[ANALYSIS.md](ANALYSIS.md) reports three local Minikube detection experiments,
+including successful goodput, successful-response latency, 429 rejections,
+scale-out/scale-in timing, and resource-sample coverage. The nine phase rows are
+in [performance.csv](performance.csv); plots and compact evidence are under
+`results/figures/` and `results/evidence/detection-20261023/`.
 
-Follow [the Phase 3 guide](../docs/PHASE_3.md) to reproduce the experiments.
+These are local single-node results, not AWS measurements, proof of hosted CI,
+or a claim of high availability. Do not present historical sentiment results
+as detection measurements.
 
-For each real experiment, preserve:
+Reproduce local experiments using [the load-test guide](../loadtest/README.md)
+and [the runbook](../docs/RUNBOOK.md). Preserve raw summaries and scaling
+samples, include the idle scale-down window, and derive CSV data with
+`scripts/analyze_experiments.py`. `throughput_rps` is successful inference
+goodput; 429s and interrupted attempts are reported separately in `notes`.
 
-- Commit SHA, image digest/tag, immutable model revision, timestamp/time zone.
-- Actual machine/instance, CPU, RAM, container limits, Kubernetes/Metrics Server versions.
-- Synthetic payload, phase, concurrency, duration and replica/HPA settings.
-- Total attempts, successful predictions, 429 rate, other client/server/transport failures. **Attempt rate is not successful inference throughput.** Report successful-response latency separately from fast rejected requests, and keep warmup outside baseline/sustained comparisons.
-- k6 summary and CPU/memory/HPA/ready-Pod JSONL time series under `results/raw/` (ignored). Record long enough to include at least 300 seconds of idle scale-down stabilization after the load ends.
-- Replica timing and pending/failed Pods as well as ready replicas. More replicas on a single node are neither more hardware nor high availability.
-
-Use the [load-test instructions](../loadtest/README.md) and [Kubernetes runbook](../docs/KUBERNETES.md). Add only actual measured rows to the CSV; leave unavailable fields blank and explain missing measurements in `notes`. Its `throughput_rps` should represent successful inference goodput for the reported phase. Include attempted rate, 429s and how `error_rate` treats rejections in `notes` or the accompanying summary. Preserve raw evidence before calculating scaling delays.
-
-Never commit API keys, real user text/audio, kubeconfigs, Terraform state/plan JSON or unsanitized command logs. The S3 results copy is operator-controlled cloud evidence only after an authorized deployment; it is not a source of measurements until those experiments actually run.
+Never commit API keys, kubeconfigs, Terraform state/plan files, or unsanitized
+command logs. Cloud artifacts are valid evidence only after an authorized
+deployment and an actually executed cloud test.

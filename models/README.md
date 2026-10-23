@@ -1,37 +1,38 @@
 # Model provenance and operation
 
-Model ID: sentiment.
-Upstream trained model:
-https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english
-CPU runtime export:
-https://huggingface.co/Xenova/distilbert-base-uncased-finetuned-sst-2-english
+Model ID: `yolov8n`.
 
-Pinned export revision: 0b6928efcb76139cae2c6881d49cda67fe119f42
-Weights: onnx/model_quantized.onnx (67,581,197 bytes).
-Tokenizer: tokenizer.json (711,396 bytes).
-Configuration: config.json (735 bytes).
-Total required asset size verified by actual download: 68,293,328 bytes.
+- Task: object detection, 80 COCO classes.
+- Runtime: ONNX Runtime CPU, static 640 by 640 FP32 input.
+- Exporter: `ultralytics==8.3.221`, ONNX opset 17.
+- Input: `images`, shape `[1, 3, 640, 640]`.
+- Output: `output0`, shape `[1, 84, 8400]` (four box values plus 80 class scores).
+- Export size: 12,851,044 bytes.
+- SHA-256: `946ca666d84aaf682e348c80996b94be55a36408bfa8a718aaf3e3c758e35b01`.
+- Release: `model-yolov8n-v1`, pinned in `app/model_registry.py`.
 
-The trained model's publisher identifies its license as Apache-2.0. The export
-card links to the trained model; it does not declare a separate license in its
-metadata. Git does not redistribute model weights; the Docker build downloads
-and bundles the pinned export for offline runtime startup. The image also bundles
-[attribution](NOTICE.md) and the [Apache-2.0 license](LICENSE-APACHE-2.0.txt) under
-`/opt/model-notices/`. Preserve these when redistributing the image or weights.
-License reference: https://www.apache.org/licenses/LICENSE-2.0
+The export metadata and upstream checkpoint digest are in
+[yolov8n-export.json](yolov8n-export.json). The ONNX asset is downloaded from
+the project's GitHub Release and hash-verified before use. Docker builds bake
+the verified model for offline startup; Kubernetes sets
+`MODEL_LOCAL_FILES_ONLY=true`. PyTorch and Ultralytics are developer export
+tools, not serving dependencies.
 
-The model is pretrained/fine-tuned for English SST-2 binary sentiment; we are
-performing inference rather than training a model. Quantization reduces weight
-storage versus full-precision weights. CPU inference was actually verified here.
-RAM consumption has not been reliably measured in this execution environment;
-record real process/container memory on your machine before choosing Pod limits.
+Ultralytics YOLOv8 code and pretrained weights are distributed under AGPL-3.0,
+with a separate commercial license option. Review current upstream terms and
+obligations with the project owner before shipping; this is not legal advice.
+See [NOTICE.md](NOTICE.md) and the included
+[AGPL-3.0 license](LICENSE-AGPL-3.0.txt). The public project source is at
+https://github.com/hrithegreat-gif/CCD-Lab-Project.
 
-Load once per process. Download only immutable allowlisted assets. ONNX Runtime
-uses CPUExecutionProvider, with one native thread by default, without executing
-client-selected remote model code. Readiness requires a successful warm-up.
-Cached offline startup is supported after assets have been prepared.
+COCO training-data attribution and bundled sample-photo provenance are
+described in [NOTICE.md](NOTICE.md) and [app/static/SAMPLES.md](../app/static/SAMPLES.md).
+The sample photos are functional demonstrations, not an accuracy evaluation
+set. Detection confidence is not calibrated correctness; results can be wrong
+or missing.
 
-Limitations: no neutral class, English focus, possible domain errors and biases,
-softmax confidence is not calibrated correctness. Quantization may change outputs
-slightly. Inputs are capped by characters and truncated by tokens.
+The detector loads once per process, runs on `CPUExecutionProvider`, and must
+complete a synthetic warm-up before readiness succeeds. Runtime model downloads
+are restricted to the pinned registry asset; client requests cannot select a
+remote model.
 Use synthetic sentences for demos and omit input text from logs.
