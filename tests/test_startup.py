@@ -1,3 +1,4 @@
+from tests.conftest import image_bytes
 """Startup and shutdown behavior: blocking default, background loading, draining."""
 import threading
 import time
@@ -65,7 +66,7 @@ def _gated_factory(created, auto_release=5.0):
 
 def test_default_settings_block_until_loaded(client, application):
     assert Settings(_env_file=None).background_model_load is False
-    assert application.state.load_tracker.snapshot() == {"sentiment": "ready"}
+    assert application.state.load_tracker.snapshot() == {"yolov8n": "ready"}
     assert application.state.load_tracker.task is None
     assert client.get("/health/ready").json() == {"status": "ready"}
 
@@ -93,7 +94,7 @@ def test_background_load_readiness_progression():
         assert client.get("/health/ready").status_code == 503
         assert client.get("/api/models").json()[0]["ready"] is False
         response = client.post(
-            "/api/inference", json={"model": "sentiment", "input": "hello"}
+            "/api/detect", content=image_bytes(), headers={"Content-Type":"image/jpeg"}
         )
         assert response.status_code == 503
 
@@ -102,9 +103,9 @@ def test_background_load_readiness_progression():
             lambda: client.get("/health/ready").status_code == 200
         )
         assert client.get("/health/ready").json() == {"status": "ready"}
-        assert client.get("/api/models/sentiment").json()["ready"] is True
+        assert client.get("/api/models/yolov8n").json()["ready"] is True
         response = client.post(
-            "/api/inference", json={"model": "sentiment", "input": "hello"}
+            "/api/detect", content=image_bytes(), headers={"Content-Type":"image/jpeg"}
         )
         assert response.status_code == 200
     assert created[0].closed_count == 1
@@ -122,15 +123,15 @@ def test_background_load_failure_fails_readiness_not_liveness():
     )
     with TestClient(application) as client:
         assert _wait_until(
-            lambda: application.state.load_tracker.snapshot()["sentiment"] == "failed"
+            lambda: application.state.load_tracker.snapshot()["yolov8n"] == "failed"
         )
         assert client.get("/health/live").status_code == 200
         ready = client.get("/health/ready")
         assert ready.status_code == 503
         assert "private startup detail" not in ready.text
-        assert client.get("/api/models/sentiment").json()["ready"] is False
+        assert client.get("/api/models/yolov8n").json()["ready"] is False
         response = client.post(
-            "/api/inference", json={"model": "sentiment", "input": "hello"}
+            "/api/detect", content=image_bytes(), headers={"Content-Type":"image/jpeg"}
         )
         assert response.status_code == 503
     # Shutdown after failed initialization stays clean.
@@ -154,7 +155,7 @@ def test_shutdown_drains_in_flight_background_load():
     assert _wait_until(lambda: tracker.task.done())
     assert not tracker.task.cancelled()  # drained to completion, not cancelled
     assert created[0].closed_count == 1  # exactly-once close, worker-owned
-    assert tracker.snapshot()["sentiment"] != "ready"
+    assert tracker.snapshot()["yolov8n"] != "ready"
 
 
 def test_background_load_cancelled_after_drain_timeout(monkeypatch):
@@ -225,7 +226,7 @@ def test_cancelled_slow_load_that_then_fails_is_closed_by_worker(monkeypatch):
     assert _wait_until(lambda: created[0].closed_count >= 1)
     assert created[0].closed_count == 1  # exactly-once close of the partial model
     assert application.state.models == {}
-    assert tracker.snapshot()["sentiment"] != "ready"  # readiness is never fabricated
+    assert tracker.snapshot()["yolov8n"] != "ready"  # readiness is never fabricated
 
 
 # ---------------------------------------------------------------------------
@@ -238,4 +239,4 @@ def test_max_request_bytes_bounds():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, max_request_bytes=10_485_761)
     settings = Settings(_env_file=None)
-    assert settings.max_request_bytes == 65536
+    assert settings.max_request_bytes == 5246976

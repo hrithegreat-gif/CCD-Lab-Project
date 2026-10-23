@@ -629,7 +629,7 @@ def test_dockerfile_base_and_nonroot(dockerfile_text):
 def test_dockerfile_bakes_pinned_model_and_notices(dockerfile_text):
     assert "/opt/model-cache" in dockerfile_text
     assert "download_assets" in dockerfile_text
-    assert "app.model_registry import SENTIMENT" in dockerfile_text
+    assert "app.model_registry import YOLOV8N" in dockerfile_text
     assert "/opt/model-notices" in dockerfile_text
     assert "models/NOTICE.md" in dockerfile_text
     assert "models/LICENSE-APACHE-2.0.txt" in dockerfile_text
@@ -662,13 +662,13 @@ def test_dockerfile_bake_reuses_registry_pins():
     registry_text = (PROJECT_ROOT / "app" / "model_registry.py").read_text(
         encoding="utf-8"
     )
-    revision = re.search(r'revision="([0-9a-f]{40})"', registry_text)
+    revision = re.search(r"sha256=[\"\']([0-9a-f]{64})[\"\']", registry_text)
     assert revision, "model registry pin not found"
     dockerfile_text = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
     # The bake step imports the registry; the pinned revision must not be
     # duplicated (drift risk) inside the Dockerfile.
     assert revision.group(1) not in dockerfile_text
-    assert "app.model_registry import SENTIMENT" in dockerfile_text
+    assert "app.model_registry import YOLOV8N" in dockerfile_text
 
 
 # ---------------------------------------------------------------------------

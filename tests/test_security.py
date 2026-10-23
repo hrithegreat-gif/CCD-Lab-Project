@@ -1,3 +1,4 @@
+from tests.conftest import image_bytes
 """Authentication, secret non-disclosure and byte-level request limit behavior."""
 import asyncio
 import json
@@ -20,7 +21,7 @@ def test_local_mode_allows_api_and_metrics_without_header(client):
     assert client.get("/metrics").status_code == 200
     assert client.get("/api/models").status_code == 200
     assert client.post(
-        "/api/inference", json={"model": "sentiment", "input": "hello"}
+        "/api/detect", content=image_bytes(), headers={"Content-Type":"image/jpeg"}
     ).status_code == 200
 
 
@@ -83,12 +84,11 @@ def test_metrics_requires_token_when_auth_enabled(authed_client, auth_headers):
 
 def test_inference_with_token_succeeds(authed_client, auth_headers):
     response = authed_client.post(
-        "/api/inference",
-        json={"model": "sentiment", "input": "hello"},
-        headers=auth_headers,
+        "/api/detect",
+        content=image_bytes(), headers={**auth_headers,"Content-Type":"image/jpeg"},
     )
     assert response.status_code == 200
-    assert response.json()["prediction"] == "positive"
+    assert response.json()["count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -97,12 +97,12 @@ def test_inference_with_token_succeeds(authed_client, auth_headers):
 
 @pytest.mark.parametrize("kwargs", [
     {},  # no body at all
-    {"content": "{broken", "headers": {"Content-Type": "application/json"}},
+    {"content": "{broken", "headers": {"Content-Type": "image/jpeg"}},
     {"content": b"x" * 999999},  # oversized raw body, no auth header
     {"json": ["not", "an", "object"]},
 ])
 def test_body_shape_never_bypasses_auth(authed_client, kwargs):
-    assert authed_client.post("/api/inference", **kwargs).status_code == 401
+    assert authed_client.post("/api/detect", **kwargs).status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ def test_openapi_documents_bearer_scheme_when_enabled(authed_client):
     scheme = schema["components"]["securitySchemes"]["bearerAuth"]
     assert scheme["type"] == "http"
     assert scheme["scheme"] == "bearer"
-    protected = ["/api/inference", "/api/models", "/metrics"]
+    protected = ["/api/detect", "/api/models", "/metrics"]
     for path in protected:
         assert path in schema["paths"], path
     for path, operations in schema["paths"].items():
@@ -147,9 +147,8 @@ def test_api_key_never_appears_in_responses_or_metrics(authed_client, auth_heade
     accepted = authed_client.get("/metrics", headers=auth_headers)
     assert TEST_API_KEY not in accepted.text
     inference = authed_client.post(
-        "/api/inference",
-        json={"model": "sentiment", "input": "hello"},
-        headers=auth_headers,
+        "/api/detect",
+        content=image_bytes(), headers={**auth_headers,"Content-Type":"image/jpeg"},
     )
     assert TEST_API_KEY not in inference.text
 
@@ -161,9 +160,9 @@ def test_api_key_never_appears_in_responses_or_metrics(authed_client, auth_heade
 def test_declared_content_length_over_limit_rejected_before_read(authed_client, auth_headers):
     limit = authed_client.app.state.settings.max_request_bytes
     response = authed_client.post(
-        "/api/inference",
+        "/api/detect",
         content=b"x" * (limit + 1),
-        headers={**auth_headers, "Content-Type": "application/json"},
+        headers={**auth_headers, "Content-Type": "image/jpeg"},
     )
     assert response.status_code == 413
     assert response.json() == {"detail": "Request body too large"}
@@ -179,19 +178,19 @@ def test_streamed_chunked_body_over_limit_rejected_413(client):
             yield chunk
 
     response = client.post(
-        "/api/inference",
+        "/api/detect",
         content=chunks(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "image/jpeg"},
     )
     assert response.status_code == 413
     assert response.json() == {"detail": "Request body too large"}
 
 
 def test_body_within_limit_succeeds(client):
-    payload = json.dumps({"model": "sentiment", "input": "hello"}).encode()
+    payload = image_bytes()
     assert len(payload) < client.app.state.settings.max_request_bytes
     response = client.post(
-        "/api/inference", content=payload, headers={"Content-Type": "application/json"}
+        "/api/detect", content=payload, headers={"Content-Type": "image/jpeg"}
     )
     assert response.status_code == 200
 
@@ -200,9 +199,9 @@ def test_413_response_does_not_echo_body(client):
     marker = "PRIVATE-OVERSIZE-MARKER" + "z" * 64
     limit = client.app.state.settings.max_request_bytes
     response = client.post(
-        "/api/inference",
+        "/api/detect",
         content=marker.encode() + b"y" * (limit + 1),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "image/jpeg"},
     )
     assert response.status_code == 413
     assert marker not in response.text
@@ -210,8 +209,8 @@ def test_413_response_does_not_echo_body(client):
 
 def test_max_request_bytes_validator_couples_to_input_limit():
     with pytest.raises(ValidationError):
-        Settings(_env_file=None, max_input_chars=10000, max_request_bytes=65536)
-    Settings(_env_file=None, max_input_chars=10000, max_request_bytes=200000)
+        Settings(_env_file=None, max_image_bytes=100000, max_request_bytes=65536)
+    Settings(_env_file=None, max_image_bytes=100000, max_request_bytes=200000)
     with pytest.raises(ValidationError):
         Settings(_env_file=None, max_request_bytes=512)
 
@@ -254,7 +253,7 @@ def test_lying_content_length_is_caught_by_byte_counting():
     scope = {
         "type": "http",
         "method": "POST",
-        "path": "/api/inference",
+        "path": "/api/detect",
         "headers": [(b"content-length", b"4")],
     }
     _run_middleware(16, scope, receive, send, downstream)
@@ -282,7 +281,7 @@ def test_absent_content_length_streaming_is_capped():
     async def receive():
         return {"type": "http.request", "body": b"z" * 8, "more_body": True}
 
-    scope = {"type": "http", "method": "POST", "path": "/api/inference", "headers": []}
+    scope = {"type": "http", "method": "POST", "path": "/api/detect", "headers": []}
 
     async def send(message):
         sent.append(message)
@@ -318,7 +317,7 @@ def test_within_limit_passes_through_middleware():
     scope = {
         "type": "http",
         "method": "POST",
-        "path": "/api/inference",
+        "path": "/api/detect",
         "headers": [(b"content-length", b"5")],
     }
     _run_middleware(16, scope, receive, send, downstream)
@@ -339,7 +338,7 @@ def test_declared_over_limit_never_calls_receive():
     scope = {
         "type": "http",
         "method": "POST",
-        "path": "/api/inference",
+        "path": "/api/detect",
         "headers": [(b"content-length", b"999999999")],
     }
     _run_middleware(16, scope, forbidden_receive, send,

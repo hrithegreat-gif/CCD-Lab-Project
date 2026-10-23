@@ -94,14 +94,10 @@ def _serve_asset(base_dir: Path, name: str) -> Response:
 
 
 def _ui_config(application: FastAPI, settings: Settings) -> dict[str, object]:
-    """Safe UI config: booleans and integer limits only. No secrets or paths."""
-    return {
-        "title": application.title,
-        "version": application.version,
-        "auth_required": bool(settings.auth_enabled),
-        "max_request_bytes": int(settings.max_request_bytes),
-        "sentiment_max_input_chars": int(settings.max_input_chars),
-    }
+    return dict(auth_required=settings.auth_enabled,max_request_bytes=settings.max_request_bytes,
+        max_image_bytes=settings.max_image_bytes,max_image_pixels=settings.max_image_pixels,
+        default_conf=settings.conf_threshold,default_iou=settings.iou_threshold,
+        max_detections=settings.max_detections,accepted_types=['image/jpeg','image/png','image/webp'])
 
 
 def install_studio(

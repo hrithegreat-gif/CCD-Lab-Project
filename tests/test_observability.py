@@ -1,8 +1,9 @@
+from tests.conftest import image_bytes
 """Prometheus exposition, label cardinality bounds and metrics privacy."""
 import pytest
 from prometheus_client import REGISTRY
 
-INFERENCE_LABELS = {"method": "POST", "endpoint": "/api/inference"}
+INFERENCE_LABELS = {"method": "POST", "endpoint": "/api/detect"}
 
 
 def _sample(name: str, labels: dict):
@@ -30,22 +31,19 @@ def test_metrics_endpoint_serves_prometheus_exposition(client):
 def test_request_counter_increments_once_per_request(client):
     labels = {**INFERENCE_LABELS, "status_code": "200"}
     before = _sample("http_requests_total", labels) or 0
-    response = client.post("/api/inference", json={"model": "sentiment", "input": "hello"})
+    response = client.post("/api/detect", content=image_bytes(), headers={"Content-Type":"image/jpeg"})
     assert response.status_code == 200
     after = _sample("http_requests_total", labels)
     assert after == before + 1
 
 
 def test_request_counter_records_error_statuses(client):
-    for body, status in (
-        ({"model": "sentiment", "input": ""}, "422"),
-        ({"model": "unknown", "input": "hello"}, "404"),
-    ):
-        labels = {**INFERENCE_LABELS, "status_code": status}
-        before = _sample("http_requests_total", labels) or 0
-        response = client.post("/api/inference", json=body)
-        assert response.status_code == int(status)
-        assert _sample("http_requests_total", labels) == before + 1
+    for body,status in [(b'', '422'),(b'not-an-image', '415')]:
+        labels={**INFERENCE_LABELS,'status_code':status}
+        before=_sample('http_requests_total',labels) or 0
+        response=client.post('/api/detect',content=body,headers={'Content-Type':'image/jpeg'})
+        assert response.status_code==int(status)
+        assert _sample('http_requests_total',labels)==before+1
 
 
 def test_request_counter_records_auth_rejections(authed_client):
@@ -59,7 +57,7 @@ def test_request_counter_records_body_limit_rejections(client):
     limit = client.app.state.settings.max_request_bytes
     labels = {**INFERENCE_LABELS, "status_code": "413"}
     before = _sample("http_requests_total", labels) or 0
-    response = client.post("/api/inference", content=b"x" * (limit + 1))
+    response = client.post("/api/detect", content=b"x" * (limit + 1))
     assert response.status_code == 413
     assert _sample("http_requests_total", labels) == before + 1
 
@@ -67,7 +65,7 @@ def test_request_counter_records_body_limit_rejections(client):
 def test_latency_histogram_observed_for_inference(client):
     count_labels = dict(INFERENCE_LABELS)
     before = _sample("http_request_duration_seconds_count", count_labels) or 0
-    response = client.post("/api/inference", json={"model": "sentiment", "input": "hello"})
+    response = client.post("/api/detect", content=image_bytes(), headers={"Content-Type":"image/jpeg"})
     assert response.status_code == 200
     after = _sample("http_request_duration_seconds_count", count_labels)
     assert after == before + 1
@@ -113,12 +111,12 @@ def test_unknown_http_method_labeled_other(client):
 
 def test_inference_input_never_labeled(client):
     marker = "OBSERVABILITY-INPUT-MARKER-" + "z" * 48
-    response = client.post("/api/inference", json={"model": "sentiment", "input": marker})
+    response = client.post("/api/detect", content=image_bytes()+marker.encode(), headers={"Content-Type":"image/jpeg"})
     assert response.status_code == 200
     assert marker not in client.get("/metrics").text
     # Model IDs are allowlisted but still must not appear as metric labels.
     exposition = client.get("/metrics").text
-    assert 'model="sentiment"' not in exposition
+    assert 'model="yolov8n"' not in exposition
 
 
 def test_metrics_never_contain_api_key(authed_client, auth_headers):
@@ -132,11 +130,11 @@ def test_metrics_never_contain_api_key(authed_client, auth_headers):
 def test_normalize_endpoint_helper_bounds_cardinality():
     from app.observability import normalize_endpoint
 
-    assert normalize_endpoint({"path": "/api/models/sentiment"}) == "/api/models/{model_id}"
+    assert normalize_endpoint({"path": "/api/models/yolov8n"}) == "/api/models/{model_id}"
     assert normalize_endpoint({"path": "/api/models/"}) == "unmatched"
     assert normalize_endpoint({"path": "/api/models/a/b"}) == "unmatched"
     assert normalize_endpoint({"path": "/api/models"}) == "/api/models"
-    assert normalize_endpoint({"path": "/api/inference"}) == "/api/inference"
+    assert normalize_endpoint({"path": "/api/detect"}) == "/api/detect"
     assert normalize_endpoint({"path": "/health/live"}) == "/health/live"
     assert normalize_endpoint({"path": "/metrics"}) == "/metrics"
     assert normalize_endpoint({"path": "/api/generate"}) == "unmatched"

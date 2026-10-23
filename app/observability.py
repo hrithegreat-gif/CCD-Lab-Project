@@ -35,7 +35,7 @@ _KNOWN_PATHS = frozenset({
     "/docs",
     "/openapi.json",
     "/api/models",
-    "/api/inference",
+    "/api/detect",
 })
 _MODEL_DETAILS_PREFIX = "/api/models/"
 _UNMATCHED = "unmatched"

@@ -1,120 +1,82 @@
-"""Real pretrained CPU inference; no Transformers/PyTorch installation required."""
-import json
+"""Pinned YOLO inference using CPU ONNX Runtime; no exporter dependencies."""
 import threading
 from dataclasses import dataclass
-from pathlib import Path
-
-import numpy as np
+from time import perf_counter
 import onnxruntime as ort
-from huggingface_hub import hf_hub_download
-from tokenizers import Tokenizer
-
-from app.config import Settings
-from app.model_registry import ModelSpec
-
+from PIL import Image
+from app.coco_labels import COCO_LABELS
+from app.model_assets import download_assets
+from app.postprocess import preprocess, postprocess
 
 class InferenceTimeout(Exception):
     """The native ONNX run exceeded its deadline."""
 
-
 @dataclass(frozen=True)
-class Prediction:
-    label: str
-    confidence: float
-    tokens_processed: int
-    truncated: bool
+class DetectionResult:
+    detections: list[dict]
+    inference_ms: float
+    postprocess_ms: float
 
-
-def download_assets(spec: ModelSpec, settings: Settings) -> dict[str, Path]:
-    """Fetch only three files from an immutable allowlisted revision."""
-    return {
-        filename: Path(hf_hub_download(
-            repo_id=spec.source, filename=filename, revision=spec.revision,
-            cache_dir=str(settings.model_cache_dir),
-            local_files_only=settings.model_local_files_only,
-        ))
-        for filename in ("config.json", "tokenizer.json", spec.weights)
-    }
-
-
-class SentimentModel:
-    def __init__(self, spec: ModelSpec, settings: Settings):
-        self.spec = spec
-        self.settings = settings
-        self._session: ort.InferenceSession | None = None
-        self._tokenizer: Tokenizer | None = None
-        self._labels: dict[int, str] = {}
+class YoloDetector:
+    def __init__(self,spec,settings):
+        self.spec,self.settings=spec,settings
+        self._session=None
+        self._ready=False
 
     @property
-    def ready(self) -> bool:
-        return self._session is not None and self._tokenizer is not None
+    def ready(self):
+        return self._ready and self._session is not None
 
-    def load(self) -> None:
-        assets = download_assets(self.spec, self.settings)
-        config = json.loads(assets["config.json"].read_text(encoding="utf-8"))
-        labels = {int(k): v.lower() for k, v in config["id2label"].items()}
-        if labels != {0: "negative", 1: "positive"}:
-            raise ValueError("Unexpected labels for allowlisted sentiment model")
-        tokenizer = Tokenizer.from_file(str(assets["tokenizer.json"]))
-        tokenizer.enable_truncation(max_length=self.settings.max_input_tokens)
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = self.settings.inference_threads
-        options.inter_op_num_threads = 1
-        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-        session = ort.InferenceSession(
-            str(assets[self.spec.weights]), sess_options=options,
-            providers=["CPUExecutionProvider"],
-        )
-        if {x.name for x in session.get_inputs()} != {"input_ids", "attention_mask"}:
-            raise ValueError("Unexpected ONNX input contract")
-        self._session, self._tokenizer, self._labels = session, tokenizer, labels
-        # Readiness requires a real warm-up prediction, not merely a downloaded file.
+    def load(self):
+        assets=download_assets(self.spec,self.settings)
+        options=ort.SessionOptions()
+        options.intra_op_num_threads=self.settings.inference_threads
+        options.inter_op_num_threads=1
+        options.execution_mode=ort.ExecutionMode.ORT_SEQUENTIAL
+        session=ort.InferenceSession(str(assets[self.spec.weights]),sess_options=options,
+                                     providers=['CPUExecutionProvider'])
+        inputs,outputs=session.get_inputs(),session.get_outputs()
+        if (len(inputs)!=1 or inputs[0].shape != [1,3,self.spec.input_size,self.spec.input_size]
+                or inputs[0].type!='tensor(float)' or len(outputs)!=1
+                or outputs[0].shape != [1,4+len(COCO_LABELS),8400]
+                or outputs[0].type!='tensor(float)'):
+            raise ValueError('Unexpected ONNX model contract')
+        self._session=session
         try:
-            self.predict("A good film.")
-        except Exception:
+            with Image.new('RGB',(self.spec.input_size,self.spec.input_size),(114,114,114)) as image:
+                self.predict(image,self.settings.conf_threshold,self.settings.iou_threshold,self.settings.max_detections)
+            self._ready=True
+        except BaseException:
             self.close()
             raise
 
-    def predict(self, text: str) -> Prediction:
-        session, tokenizer = self._session, self._tokenizer
-        if session is None or tokenizer is None:
-            raise RuntimeError("Model is not loaded")
-        encoding = tokenizer.encode(text)
-        feed = {
-            "input_ids": np.array([encoding.ids], dtype=np.int64),
-            "attention_mask": np.array([encoding.attention_mask], dtype=np.int64),
-        }
-        run_options = ort.RunOptions()
-        expired = threading.Event()
-
-        def terminate() -> None:
+    def predict(self,image,conf,iou,max_det):
+        session=self._session
+        if session is None: raise RuntimeError('Model is not loaded')
+        tensor,letterbox=preprocess(image,self.spec.input_size)
+        run_options=ort.RunOptions()
+        expired=threading.Event()
+        def terminate():
             expired.set()
-            run_options.terminate = True
-
-        timer = threading.Timer(self.settings.inference_timeout_seconds, terminate)
-        timer.daemon = True
+            run_options.terminate=True
+        timer=threading.Timer(self.settings.inference_timeout_seconds,terminate)
+        timer.daemon=True
+        began=perf_counter()
         timer.start()
         try:
-            logits = session.run(["logits"], feed, run_options=run_options)[0][0]
+            raw=session.run([session.get_outputs()[0].name],{session.get_inputs()[0].name:tensor},run_options=run_options)[0]
         except Exception as exc:
-            if expired.is_set():
-                raise InferenceTimeout("Inference deadline exceeded") from exc
+            if expired.is_set(): raise InferenceTimeout('Inference deadline exceeded') from exc
             raise
         finally:
             timer.cancel()
-        if expired.is_set():
-            raise InferenceTimeout("Inference deadline exceeded")
-        if logits.shape != (2,) or not np.isfinite(logits).all():
-            raise ValueError("Invalid model logits")
-        probabilities = np.exp(logits - np.max(logits))
-        probabilities /= probabilities.sum()
-        index = int(np.argmax(probabilities))
-        return Prediction(
-            label=self._labels[index], confidence=float(probabilities[index]),
-            tokens_processed=len(encoding.ids), truncated=bool(encoding.overflowing),
-        )
+        if expired.is_set(): raise InferenceTimeout('Inference deadline exceeded')
+        inference_ms=(perf_counter()-began)*1000
+        began=perf_counter()
+        detections=postprocess(raw,letterbox,conf,iou,max_det)
+        for item in detections: item['label']=COCO_LABELS[item['class_id']]
+        return DetectionResult(detections,inference_ms,(perf_counter()-began)*1000)
 
-    def close(self) -> None:
-        self._session = None
-        self._tokenizer = None
-        self._labels = {}
+    def close(self):
+        self._ready=False
+        self._session=None

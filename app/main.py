@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Callable
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -14,8 +14,8 @@ from prometheus_client import REGISTRY as PROMETHEUS_REGISTRY
 from starlette.datastructures import Headers
 
 from app.config import Settings
-from app.inference import InferenceTimeout, SentimentModel
-from app.model_registry import REGISTRY, ModelSpec, metadata
+from app.inference import InferenceTimeout, YoloDetector
+from app.model_registry import REGISTRY, ModelSpec, metadata, ACCEPTED_CONTENT_TYPES
 from app.observability import (
     REQUEST_COUNT,
     REQUEST_LATENCY,
@@ -24,8 +24,9 @@ from app.observability import (
     normalize_endpoint,
     normalize_method,
 )
-from app.schemas import ErrorResponse, InferenceRequest, InferenceResponse, ModelMetadata
+from app.schemas import ErrorResponse, DetectResponse, ModelMetadata
 from app.studio import install_studio
+from app.imaging import decode_image, ImageRejected
 
 # Grace period for an in-flight native model load during shutdown. Native
 # threads cannot be force-killed, so shutdown first drains, then cancels.
@@ -246,7 +247,7 @@ def _expose_bearer_scheme(application: FastAPI, settings: Settings) -> None:
 
 def create_app(
     settings: Settings | None = None,
-    model_factory: Callable[[ModelSpec, Settings], SentimentModel] = SentimentModel,
+    model_factory: Callable[[ModelSpec, Settings], YoloDetector] = YoloDetector,
 ) -> FastAPI:
     settings = settings or Settings()
     configure_logging(settings.log_level)
@@ -347,8 +348,8 @@ def create_app(
             application.state.models.clear()
 
     application = FastAPI(
-        title="AI Model Serving Platform", version="0.1.0", lifespan=lifespan,
-        description="Phase 1 CPU sentiment REST API. AWS integrations are deferred.",
+        title="AI Model Serving Platform", version="0.2.0", lifespan=lifespan,
+        description="CPU object detection with bounded uploads and inference.",
     )
     application.state.models = {}
     application.state.settings = settings
@@ -409,49 +410,71 @@ def create_app(
         model = application.state.models.get(model_id)
         return metadata(REGISTRY[model_id], settings, bool(model and model.ready))
 
-    @application.post("/api/inference", response_model=InferenceResponse,
-                      tags=["inference"],
-                      responses={code: {"model": ErrorResponse}
-                                 for code in (404, 413, 429, 500, 503, 504)})
-    def inference(body: InferenceRequest):
-        started = perf_counter()
-        code = 500
-        acquired = False
+    @application.post('/api/detect', response_model=DetectResponse, tags=['detection'],
+                      responses={code: {'model': ErrorResponse} for code in (413,415,422,429,500,503,504)})
+    async def detect(request: Request,
+                     conf: float = Query(default=settings.conf_threshold,ge=.05,le=.95,allow_inf_nan=False),
+                     iou: float = Query(default=settings.iou_threshold,ge=.10,le=.95,allow_inf_nan=False),
+                     max_detections: int = Query(default=settings.max_detections,ge=1,le=settings.max_detections)):
+        started=perf_counter()
+        code,count=500,0
+        acquired=False
+        transferred=False
         try:
-            if len(body.input) > settings.max_input_chars:
-                raise HTTPException(422, f"Input exceeds {settings.max_input_chars} characters")
-            if body.model not in REGISTRY:
-                raise HTTPException(404, "Unknown model")
-            model = application.state.models.get(body.model)
+            content_type=request.headers.get('content-type','').split(';',1)[0].strip().lower()
+            if content_type not in ACCEPTED_CONTENT_TYPES:
+                raise HTTPException(415,'Unsupported image type')
+            model=application.state.models.get('yolov8n')
             if model is None or not model.ready:
-                raise HTTPException(503, "Model is not ready")
-            acquired = application.state.slots.acquire(blocking=False)
+                raise HTTPException(503,'Model is not ready')
+            body=await request.body()
+            if len(body)>settings.max_image_bytes:
+                raise HTTPException(413,'Request body too large')
+            if not body:
+                raise HTTPException(422,'Invalid image')
+            acquired=application.state.slots.acquire(blocking=False)
             if not acquired:
-                raise HTTPException(429, "Inference capacity reached; retry later",
-                                    headers={"Retry-After": "1"})
-            result = model.predict(body.input)
-            response = InferenceResponse(
-                model=body.model, prediction=result.label, confidence=result.confidence,
-                processing_time_ms=round((perf_counter() - started) * 1000, 3),
-                tokens_processed=result.tokens_processed, truncated=result.truncated,
-            )
-            code = 200
+                raise HTTPException(429,'Inference capacity reached; retry later',headers={'Retry-After':'1'})
+            def run():
+                try:
+                    decode_started=perf_counter()
+                    with decode_image(body,content_type,settings) as image:
+                        decode_ms=(perf_counter()-decode_started)*1000
+                        result=model.predict(image,conf,iou,max_detections)
+                        return DetectResponse(image={'width':image.width,'height':image.height},
+                            count=len(result.detections),detections=result.detections,
+                            parameters={'conf':conf,'iou':iou,'max_detections':max_detections},
+                            processing_time_ms=(perf_counter()-started)*1000,
+                            timings_ms={'decode':decode_ms,'inference':result.inference_ms,'postprocess':result.postprocess_ms})
+                finally:
+                    # Native work outlives cancellation: never release early.
+                    application.state.slots.release()
+            worker=asyncio.create_task(asyncio.to_thread(run))
+            transferred=True
+            def consume(task):
+                if not task.cancelled(): task.exception()
+            worker.add_done_callback(consume)
+            response=await asyncio.shield(worker)
+            code,count=200,response.count
             return response
+        except ImageRejected as exc:
+            code=exc.status_code
+            raise HTTPException(code,exc.detail) from None
         except HTTPException as exc:
-            code = exc.status_code
+            code=exc.status_code
             raise
         except InferenceTimeout:
-            code = 504
-            raise HTTPException(504, "Inference timed out") from None
+            code=504
+            raise HTTPException(504,'Inference timed out') from None
+        except asyncio.CancelledError:
+            code=499
+            raise
         except Exception as exc:
-            event("inference_failed", logging.ERROR, error_type=type(exc).__name__)
-            raise HTTPException(500, "Inference failed") from None
+            event('detection_failed',logging.ERROR,error_type=type(exc).__name__)
+            raise HTTPException(500,'Inference failed') from None
         finally:
-            if acquired:
-                application.state.slots.release()
-            # Only log model IDs that belong to the allowlist.
-            event("inference", model=body.model if body.model in REGISTRY else "unknown",
-                  status_code=code, processing_time_ms=round((perf_counter() - started) * 1000, 3))
+            if acquired and not transferred: application.state.slots.release()
+            event('detection',status_code=code,processing_time_ms=round((perf_counter()-started)*1000,3),count=count)
 
     _expose_bearer_scheme(application, settings)
     install_studio(application, settings)

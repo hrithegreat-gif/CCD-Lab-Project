@@ -35,14 +35,16 @@ COPY models/NOTICE.md models/LICENSE-APACHE-2.0.txt /opt/model-notices/
 RUN python -c "import json; \
 from pathlib import Path; \
 from app.config import Settings; \
-from app.inference import SentimentModel, download_assets; \
-from app.model_registry import SENTIMENT; \
+from app.inference import YoloDetector, download_assets; \
+from app.model_registry import YOLOV8N; \
 settings = Settings(_env_file=None, model_cache_dir=Path('/opt/model-cache')); \
-assets = download_assets(SENTIMENT, settings); \
-model = SentimentModel(SENTIMENT, settings); \
+assets = download_assets(YOLOV8N, settings); \
+model = YoloDetector(YOLOV8N, settings); \
 model.load(); \
-assert all(model.predict(text).label == expected for text, expected in (('I love this product. It is absolutely wonderful!', 'positive'), ('I hate this product. It is terrible and disappointing.', 'negative'))); \
-print(json.dumps({'baked': SENTIMENT.source, 'revision': SENTIMENT.revision, 'bytes': {name: path.stat().st_size for name, path in assets.items()}})); \
+from PIL import Image; \
+image = Image.open('app/static/sample-cat.jpg'); \
+assert any(d['label'] == 'cat' for d in model.predict(image, .25, .45, 100).detections); \
+print(json.dumps({'baked': YOLOV8N.source, 'revision': YOLOV8N.revision, 'bytes': {name: path.stat().st_size for name, path in assets.items()}})); \
 model.close()" \
  && touch /opt/model-cache/.model-baked
 
