@@ -33,3 +33,6 @@ results/*.json
 results/*.jsonl
 results/*.txt
 .validation/
+
+# Developer-only exporter configuration
+Ultralytics/

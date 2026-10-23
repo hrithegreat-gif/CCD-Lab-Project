@@ -1,12 +1,21 @@
-# Bundled sentiment model attribution
+# YOLOv8n model notice
 
-The baseline container includes a quantized ONNX export of the DistilBERT model fine-tuned on English SST-2.
+YOLOv8n pretrained COCO weights and the Ultralytics exporter are distributed
+under AGPL-3.0, with a separate commercial license option from Ultralytics.
+The pinned exporter is ultralytics 8.3.221; its license is included as
+LICENSE-AGPL-3.0.txt. Verify obligations for your use with the owner; this notice
+is not legal advice. Public source availability alone is not a blanket claim
+of compliance with every AGPL obligation.
 
-- Trained model publisher: [DistilBERT / Hugging Face](https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english).
-- ONNX export publisher: [Xenova](https://huggingface.co/Xenova/distilbert-base-uncased-finetuned-sst-2-english).
-- Export revision: `0b6928efcb76139cae2c6881d49cda67fe119f42`.
-- Quantization/export is an upstream transformation; this project does not modify the downloaded weights.
-- The trained-model card declares Apache-2.0. The export card links to that model and does not declare a separate license. Retain the publishers' attribution and verify any additional upstream notices before redistribution.
-- [Apache License 2.0 copy](LICENSE-APACHE-2.0.txt), sourced verbatim from [the Apache Software Foundation](https://www.apache.org/licenses/LICENSE-2.0.txt).
+Source: https://github.com/ultralytics/ultralytics/tree/v8.3.221
+License: https://github.com/ultralytics/ultralytics/blob/v8.3.221/LICENSE
+Project source: https://github.com/hrithegreat-gif/CCD-Lab-Project
+Training dataset: COCO (Common Objects in Context), https://cocodataset.org/
+COCO image copyrights belong to the original contributors; training on COCO
+is not a license grant for arbitrary COCO photos.
 
-This notice concerns the bundled model only; it does not assign a new license to this project's application code or replace dependency/upstream notices. Optional Qwen/Kitten/Groq artifacts are not bundled in the baseline image.
+The exported model metadata, exact SHA-256, bytes and upstream checkpoint hash
+are recorded in yolov8n-export.json. Exported weights are hosted as the project's
+model-yolov8n-v1 GitHub Release asset. Sample photograph provenance is in
+app/static/SAMPLES.md. PyTorch and Ultralytics are export tools only and are
+not serving dependencies.
