@@ -141,7 +141,8 @@ Follow [PHASE_3.md](../docs/PHASE_3.md) for the commands and expected observatio
 Use a fresh run prefix, wait for idle recovery, then run the analyzer. Inspect
 the CSV and source evidence rather than expecting identical timing numbers.
 
-Phase 3's local load/scaling evidence gate is complete. Phase 4 still needs
-same-commit hosted CI, final demo/report assembly and cleanup acceptance. Optional
-cloud/provider work remains separate. The cluster is left running with one ready
-serving Pod; completed benchmark Jobs remain for inspection.
+Phase 3's local load/scaling evidence gate is complete. Phase 4 subsequently completed hosted CI, final demo/report assembly and cleanup
+acceptance; see [the verification ledger](../docs/VERIFICATION.md). Optional
+cloud/provider work remains separate. Phase 4 preserved this evidence, deleted the namespace (including completed
+Jobs), verified redeployment and stopped the profile. Raw saved logs remain
+available; use the Phase 4 guide to resume the application.

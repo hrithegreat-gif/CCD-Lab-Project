@@ -258,10 +258,14 @@ These optional systems need their own concrete execution instructions when selec
 
 ### Phase 4 completion gate
 
-- [ ] Same-commit hosted CI succeeds.
-- [ ] README/setup and final demo are repeatable.
-- [ ] Verification claims match actual evidence.
-- [ ] Cleanup works for the intended local namespace/profile.
-- [ ] Optional extensions are explicitly marked verified, pending or deferred.
+- [x] Same-commit hosted CI succeeds.
+- [x] README/setup and final demo are repeatable.
+- [x] Verification claims match actual evidence.
+- [x] Cleanup works for the intended local namespace/profile.
+- [x] Optional extensions are explicitly marked verified, pending or deferred.
+
+Local cleanup/redeployment and hosted CI passed on 23 October 2026; see the
+[verification ledger](VERIFICATION.md) for the exact implementation commit/run.
+Confirm team names/contributions before submitting the final report.
 
 The required project is complete when the four core phase gates are satisfied, with any unachieved scaling behavior transparently documented against the specification's limitation allowance. Optional infrastructure should never be used to obscure missing local acceptance evidence.

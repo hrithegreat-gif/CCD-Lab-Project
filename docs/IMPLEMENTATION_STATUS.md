@@ -2,14 +2,23 @@
 
 Review date: **21 October 2026 (Asia/Calcutta)**
 
+**Phase 4 delivered on 23 October:** all six hosted CI jobs passed on review
+branch `phase4/delivery-20261023`; exact implementation SHA/run are in the ledger.
+Final local tests, cleanup guards, namespace deletion, redeployment, real Service
+inference and profile stop all passed. The [delivery guide](PHASE_4.md),
+[demo](DEMO.md) and [final report](FINAL_REPORT.md) are ready. The local cluster
+is stopped. Team names/contributions still need confirmation; optional extensions
+remain deferred. Historical pending statements below are superseded by this
+follow-up and the verification ledger.
+
 **Phase 3 completed, analysis verified 23 October:** three actual local load
 experiments each demonstrated 1 ? 3 ? 1 ready replicas. The runner, analyzer,
 nine measured CSV rows, plots and preserved evidence are complete. Sustained
 successful throughput was 104?117 predictions/second; 429 rejections were about
 57?59% of attempts. Missing/stale resource metrics are disclosed. The current
 Python suite passes all 296 tests without skips. See [PHASE_3.md](PHASE_3.md)
-and [the measured report](../results/ANALYSIS.md). Remaining core work is Phase 4:
-hosted CI, final demo/report assembly and cleanup acceptance. The original
+and [the measured report](../results/ANALYSIS.md). Phase 4 subsequently completed hosted CI, final demo/report assembly and cleanup
+acceptance. The original
 review below is historical where superseded by these follow-ups.
 
 **Phase 2 follow-up completed on 22 October:** clean container build, corrected
@@ -349,8 +358,8 @@ Those are repository records, not freshly reproduced outcomes. The ledger also r
 - [x] Populate `results/performance.csv` with actual values and workload/environment details.
 - [x] Report successful throughput separately from attempted traffic and overload rejections.
 - [x] Analyze latency, errors, resource contention and scaling delays.
-- [ ] Confirm a successful hosted CI run for the relevant commit.
-- [ ] Fix documentation contradictions and complete the local setup path.
+- [x] Confirm a successful hosted CI run for the relevant commit.
+- [x] Fix documentation contradictions and complete the local setup path.
 - [ ] Assemble the report/demo with measurements, screenshots, limitations and team contributions.
 
 ### Priority 5: Select optional extensions after MVP acceptance
@@ -361,4 +370,4 @@ Those are repository records, not freshly reproduced outcomes. The ledger also r
 - [ ] Implement the complete asynchronous job pipeline only if required.
 - [ ] Execute and verify the optional AWS deployment only as a separately authorized activity.
 
-The next implementation milestone is **Phase 4: hosted CI and the final reproducible demonstration**. Additional UI, cloud services, or model adapters do not replace that acceptance evidence.
+The four core technical phases are delivered. Confirm team contributions and rehearse the final presentation before submission. Additional UI, cloud services, or model adapters do not replace that acceptance evidence.

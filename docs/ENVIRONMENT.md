@@ -1,5 +1,14 @@
 # Development and deployment environments
 
+## Phase 4 refresh on 23 October 2026
+
+The dedicated namespace was deleted and recreated successfully. Real authenticated
+Service smoke passed after recovery, with one ready Pod and zero restarts.
+The `ai-serving-local` profile was then stopped to release compute. Resume with
+`scripts/deploy-local.ps1` and the intended local API key. Earlier descriptions
+of a running cluster are historical. Hosted CI and exact commit/run identity
+are recorded in [VERIFICATION.md](VERIFICATION.md).
+
 ## Phase 2 refresh on 22 October 2026
 
 - Docker Desktop Linux engine: 29.2.1; clean build and hardened smoke executed.
