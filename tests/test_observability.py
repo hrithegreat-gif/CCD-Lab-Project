@@ -139,7 +139,7 @@ def test_normalize_endpoint_helper_bounds_cardinality():
     assert normalize_endpoint({"path": "/api/inference"}) == "/api/inference"
     assert normalize_endpoint({"path": "/health/live"}) == "/health/live"
     assert normalize_endpoint({"path": "/metrics"}) == "/metrics"
-    assert normalize_endpoint({"path": "/api/generate"}) == "/api/generate"
+    assert normalize_endpoint({"path": "/api/generate"}) == "unmatched"
     arbitrary = f"/{id(object())}/{id(object())}"
     assert normalize_endpoint({"path": arbitrary}) == "unmatched"
     assert normalize_endpoint({}) == "unmatched"

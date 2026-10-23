@@ -1,11 +1,4 @@
-"""FastAPI REST application with real model lifecycle, safe failures, optional
-Bearer authentication, byte-level request limits and Prometheus metrics.
-
-The optional extension package is installed once via
-``app.extensions.install_extensions(application, settings)``. That module is
-owned by the extension agent; if it is missing, importing this module fails
-loudly instead of silently dropping the feature.
-"""
+"""FastAPI model serving with authenticated, bounded requests and lifecycle probes."""
 import asyncio
 import logging
 import threading
@@ -21,7 +14,6 @@ from prometheus_client import REGISTRY as PROMETHEUS_REGISTRY
 from starlette.datastructures import Headers
 
 from app.config import Settings
-from app.extensions import install_extensions
 from app.inference import InferenceTimeout, SentimentModel
 from app.model_registry import REGISTRY, ModelSpec, metadata
 from app.observability import (
@@ -462,7 +454,6 @@ def create_app(
                   status_code=code, processing_time_ms=round((perf_counter() - started) * 1000, 3))
 
     _expose_bearer_scheme(application, settings)
-    install_extensions(application, settings)
     install_studio(application, settings)
     return application
 

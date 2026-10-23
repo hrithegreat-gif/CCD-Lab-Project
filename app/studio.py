@@ -1,26 +1,4 @@
-"""Public demo UI serving: static assets, safe UI config, UI security headers.
-
-Installed once by the core ``create_app`` as ``install_studio(application,
-settings)`` after ``install_extensions``. This module owns ONLY the browser
-surface (``/``, ``/studio``, ``/studio/``, ``/studio/config``,
-``/studio/assets/*``); the API contract (``/api/*``), ``/metrics``, probes and
-the OpenAPI documents are passed through untouched, so Bearer protections and
-existing Swagger behavior are unaffected.
-
-Security model:
-- Assets are served from a strict filename allowlist. Any other name is a 404
-  before the filesystem is touched, so traversal sequences, encoded slashes
-  and sibling paths can never resolve. A resolve-containment check is kept as
-  defense in depth.
-- The config endpoint exposes only booleans and integer limits. API keys,
-  provider identifiers, account/region values and filesystem paths are never
-  included, and no ``ExtensionSettings`` is instantiated here: values are read
-  from the already-installed extension runtime when present and fall back to
-  module constants mirroring ``app/extensions.py`` defaults otherwise.
-- Security headers are added for studio paths only via one pure ASGI
-  middleware. Request bodies are never read or buffered; nothing about a
-  request (method, headers, input) is logged.
-"""
+"""Public UI with allowlisted assets, safe configuration and strict security headers."""
 from pathlib import Path
 from typing import Mapping
 
@@ -58,26 +36,6 @@ UI_CONTENT_SECURITY_POLICY = "; ".join([
     "frame-ancestors 'none'",
     "form-action 'self'",
 ])
-
-# Fallbacks used only when the extension runtime is not installed (e.g. unit
-# testing this module in isolation). They mirror the defaults of
-# ExtensionSettings in app/extensions.py; nothing is instantiated from the
-# environment here.
-_FALLBACK_LIMITS: Mapping[str, int] = {
-    "generation_max_input_chars": 2000,
-    "generation_max_output_tokens": 256,
-    "speech_max_input_chars": 1000,
-    "transcription_max_bytes": 10_485_760,
-}
-
-# UI config key -> ExtensionSettings attribute (app/extensions.py).
-_EXTENSION_LIMIT_ATTRS: Mapping[str, str] = {
-    "generation_max_input_chars": "generate_max_input_chars",
-    "generation_max_output_tokens": "generate_max_output_tokens",
-    "speech_max_input_chars": "speech_max_input_chars",
-    "transcription_max_bytes": "transcription_max_bytes",
-}
-
 
 def is_studio_path(path: object) -> bool:
     """True for the UI surface only: /, /studio, /studio/ and /studio/*."""
@@ -135,37 +93,14 @@ def _serve_asset(base_dir: Path, name: str) -> Response:
     return Response(content=data, media_type=media_type)
 
 
-def _extension_ui_limits(application: FastAPI) -> dict[str, int]:
-    """Integer UI limits from the installed extension runtime, if present.
-
-    Defensive attribute access: a missing or incompatible ``state.extensions``
-    falls back to the module constants instead of failing the UI config.
-    """
-    runtime = getattr(application.state, "extensions", None)
-    ext_settings = getattr(runtime, "settings", None)
-    limits: dict[str, int] = {}
-    for ui_key, attr in _EXTENSION_LIMIT_ATTRS.items():
-        raw = getattr(ext_settings, attr, None) if ext_settings is not None else None
-        # bool is an int subclass; only real integers are accepted.
-        limits[ui_key] = (
-            raw if isinstance(raw, int) and not isinstance(raw, bool) else _FALLBACK_LIMITS[ui_key]
-        )
-    return limits
-
-
 def _ui_config(application: FastAPI, settings: Settings) -> dict[str, object]:
     """Safe UI config: booleans and integer limits only. No secrets or paths."""
-    limits = _extension_ui_limits(application)
     return {
         "title": application.title,
         "version": application.version,
         "auth_required": bool(settings.auth_enabled),
         "max_request_bytes": int(settings.max_request_bytes),
         "sentiment_max_input_chars": int(settings.max_input_chars),
-        "generation_max_input_chars": limits["generation_max_input_chars"],
-        "generation_max_output_tokens": limits["generation_max_output_tokens"],
-        "speech_max_input_chars": limits["speech_max_input_chars"],
-        "transcription_max_bytes": limits["transcription_max_bytes"],
     }
 
 
@@ -177,7 +112,7 @@ def install_studio(
 ) -> None:
     """Register the public demo UI: static assets and safe UI config.
 
-    Call once after ``install_extensions`` in ``create_app``. Raises
+    Call once in ``create_app``. Raises
     RuntimeError on a second call instead of silently duplicating routes.
     Routes are excluded from OpenAPI so the API contract stays unchanged.
     """

@@ -16,7 +16,6 @@ from fastapi.responses import Response
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.extensions import ExtensionSettings, install_extensions
 from app.main import create_app
 from app.studio import (
     DEFAULT_STATIC_DIR,
@@ -33,10 +32,6 @@ EXPECTED_CONFIG_KEYS = {
     "auth_required",
     "max_request_bytes",
     "sentiment_max_input_chars",
-    "generation_max_input_chars",
-    "generation_max_output_tokens",
-    "speech_max_input_chars",
-    "transcription_max_bytes",
 }
 
 FIXTURE_ASSETS = {
@@ -225,10 +220,6 @@ def test_config_without_extensions_reports_fallback_defaults(studio_client):
         "auth_required": False,
         "max_request_bytes": 65536,
         "sentiment_max_input_chars": 2000,
-        "generation_max_input_chars": 2000,
-        "generation_max_output_tokens": 256,
-        "speech_max_input_chars": 1000,
-        "transcription_max_bytes": 10_485_760,
     }
     assert set(data) == EXPECTED_CONFIG_KEYS
 
@@ -242,32 +233,6 @@ def test_config_with_auth_reports_flag_never_the_key(tmp_path):
     assert set(response.json()) == EXPECTED_CONFIG_KEYS
 
 
-def test_config_uses_installed_extension_runtime_limits():
-    """Values flow from the already-installed extension runtime, not a fresh
-    ExtensionSettings built from the environment."""
-    application = FastAPI(title="AI Model Serving Platform", version="0.1.0")
-    settings = Settings(_env_file=None)
-    install_extensions(
-        application,
-        settings,
-        extension_settings=ExtensionSettings(
-            _env_file=None,
-            generate_max_input_chars=1234,
-            generate_max_output_tokens=77,
-            speech_max_input_chars=222,
-            transcription_max_bytes=4096,
-        ),
-    )
-    install_studio(application, settings)
-    data = TestClient(application).get("/studio/config").json()
-    assert data["generation_max_input_chars"] == 1234
-    assert data["generation_max_output_tokens"] == 77
-    assert data["speech_max_input_chars"] == 222
-    assert data["transcription_max_bytes"] == 4096
-    # Non-extension fields still come from core settings.
-    assert data["max_request_bytes"] == 65536
-    assert data["sentiment_max_input_chars"] == 2000
-    assert data["auth_required"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -276,16 +241,11 @@ def test_config_uses_installed_extension_runtime_limits():
 
 def test_create_app_installs_studio_with_runtime_limits(client):
     data = client.get("/studio/config").json()
-    runtime = client.app.state.extensions
     assert data["title"] == "AI Model Serving Platform"
     assert data["version"] == "0.1.0"
     assert data["auth_required"] is False
     assert data["max_request_bytes"] == client.app.state.settings.max_request_bytes
     assert data["sentiment_max_input_chars"] == client.app.state.settings.max_input_chars
-    assert data["generation_max_input_chars"] == runtime.settings.generate_max_input_chars
-    assert data["generation_max_output_tokens"] == runtime.settings.generate_max_output_tokens
-    assert data["speech_max_input_chars"] == runtime.settings.speech_max_input_chars
-    assert data["transcription_max_bytes"] == runtime.settings.transcription_max_bytes
 
 
 def test_install_studio_cannot_be_called_twice_on_created_app(application):
@@ -332,11 +292,6 @@ def test_studio_routes_are_excluded_from_openapi(client):
         assert path != "/"
 
 
-def test_default_extension_capabilities_stay_disabled(client):
-    """Default install triggers no provider behavior (no imports, downloads)."""
-    capabilities = client.get("/api/capabilities").json()["capabilities"]
-    assert capabilities, "extension routes must still be installed"
-    assert all(cap["state"] == "disabled" for cap in capabilities.values())
 
 
 def test_default_static_dir_serves_real_index_when_authored(client):
