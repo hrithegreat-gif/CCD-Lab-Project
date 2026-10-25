@@ -49,6 +49,15 @@ variables {
   github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
 }
 
+run "github_oidc_subject_uses_immutable_ids" {
+  command = plan
+
+  assert {
+    condition     = local.github_sub == "repo:hrithegreat-gif@264411662/CCD-Lab-Project@1416389614:environment:aws-demo"
+    error_message = "GitHub OIDC trust must use immutable owner/repository IDs and the exact deployment environment."
+  }
+}
+
 # Note: .tftest.hcl supports no locals blocks — the SSM runCommand expression
 # join("\n", jsondecode(aws_ssm_document.deploy.content).mainSteps[0].inputs.runCommand)
 # is inlined in each assertion below.

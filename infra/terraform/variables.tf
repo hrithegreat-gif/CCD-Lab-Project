@@ -133,12 +133,34 @@ variable "github_oidc_provider_arn" {
 }
 
 variable "github_repository" {
-  description = "GitHub repository trusted to assume the deploy role (exactly repo:<owner>/<repo>:environment:aws-demo)."
+  description = "GitHub repository trusted to assume the deploy role. Set together with github_owner_id and github_repository_id when using a different repository."
   type        = string
   default     = "hrithegreat-gif/CCD-Lab-Project"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
     error_message = "github_repository must look like owner/repo."
+  }
+}
+
+variable "github_owner_id" {
+  description = "Immutable GitHub owner ID used in the OIDC subject claim."
+  type        = string
+  default     = "264411662"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id must contain only digits."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID used in the OIDC subject claim."
+  type        = string
+  default     = "1416389614"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must contain only digits."
   }
 }

@@ -15,6 +15,11 @@ ssm_parameter_prefix = "/ccd-lab"
 # create_oidc_provider     = true
 # github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
 
+# For another GitHub repository, set the exact name and IDs together.
+# github_repository    = "owner/repository"
+# github_owner_id      = "123456"
+# github_repository_id = "789012"
+
 # Optional tuning (defaults shown):
 # instance_type              = "m7i-flex.large"
 # root_volume_size           = 40

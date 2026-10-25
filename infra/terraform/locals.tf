@@ -18,8 +18,11 @@ locals {
   log_group_k3s_service = "/${var.project_prefix}/k3s-service"
   log_group_bootstrap   = "/${var.project_prefix}/bootstrap"
 
-  # GitHub OIDC trust: exact environment-scoped subject (StringEquals).
-  github_sub = "repo:${var.github_repository}:environment:aws-demo"
+  # Repositories created after 2026-07-15 use immutable owner/repository IDs
+  # in the subject claim. Keep the environment qualifier exact (StringEquals).
+  github_owner     = split("/", var.github_repository)[0]
+  github_repo_name = split("/", var.github_repository)[1]
+  github_sub       = "repo:${local.github_owner}@${var.github_owner_id}/${local.github_repo_name}@${var.github_repository_id}:environment:aws-demo"
 
   # Classic GitHub token-signing thumbprints. AWS no longer strictly requires
   # thumbprints for GitHub OIDC (it validates via trusted CAs), but including

@@ -38,10 +38,12 @@ default region does not change that.
 ## 2. Configure GitHub OIDC and Terraform inputs
 
 GitHub Actions authenticates to AWS with OIDC; do not create or store AWS access
-keys in GitHub. The Terraform role trusts only this exact subject:
+keys in GitHub. This repository was created after GitHub's July 15, 2026 rollout of immutable
+OIDC subject claims. Terraform trusts only this exact environment-scoped
+subject, including the immutable owner and repository IDs:
 
 ```text
-repo:hrithegreat-gif/CCD-Lab-Project:environment:aws-demo
+repo:hrithegreat-gif@264411662/CCD-Lab-Project@1416389614:environment:aws-demo
 ```
 
 Check whether the account already has the GitHub OIDC provider:
@@ -66,8 +68,11 @@ Copy-Item terraform.tfvars.example terraform.tfvars
 ```
 
 The default repository trust is the repository named above. If deploying a
-fork or a renamed repository, set `github_repository` to the exact `owner/repo`
-before planning.
+fork or a renamed repository, set `github_repository`, `github_owner_id`, and
+`github_repository_id` to the exact GitHub repository name and numeric IDs
+before planning. GitHub Actions authenticates with the environment-scoped
+immutable subject; a name-only subject will not match for repositories using
+the immutable format.
 
 ## 3. Plan and apply infrastructure
 
