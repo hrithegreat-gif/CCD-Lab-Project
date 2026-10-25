@@ -104,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(stream, encoding="utf-8", newline="\n")
+        with output.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(stream)
         print(f"render_k8s: wrote {len(paths)} manifests to {output}",
               file=sys.stderr)
     return 0
