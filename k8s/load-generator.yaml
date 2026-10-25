@@ -1,7 +1,7 @@
 # Opt-in in-cluster load generator (batch/v1 Job). Not applied by
 # scripts/deploy-k3s.sh; run it explicitly for HPA/scaling experiments.
 #
-# Prerequisites (docs/KUBERNETES.md):
+# Prerequisites and measured-run instructions: docs/RUNBOOK.md and loadtest/README.md.
 #   kubectl -n ai-serving create configmap k6-script \
 #       --from-file=k6-script.js=loadtest/k6-script.js \
 #       --from-file=sample.jpg=loadtest/sample.jpg

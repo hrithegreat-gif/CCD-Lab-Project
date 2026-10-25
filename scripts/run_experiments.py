@@ -7,9 +7,13 @@ created by this process is removed on interruption/failure to stop its load.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
+import os
+import platform
 import re
+import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -40,6 +44,50 @@ def parse_output(log: str) -> tuple[float, dict]:
 
 def write_json(path: Path, value) -> None:
     path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+
+
+def host_memory_total_mib() -> int | None:
+    if os.name == 'nt':
+        class MemoryStatus(ctypes.Structure):
+            _fields_ = [
+                ('dwLength', ctypes.c_ulong),
+                ('dwMemoryLoad', ctypes.c_ulong),
+                ('ullTotalPhys', ctypes.c_ulonglong),
+                ('ullAvailPhys', ctypes.c_ulonglong),
+                ('ullTotalPageFile', ctypes.c_ulonglong),
+                ('ullAvailPageFile', ctypes.c_ulonglong),
+                ('ullTotalVirtual', ctypes.c_ulonglong),
+                ('ullAvailVirtual', ctypes.c_ulonglong),
+                ('ullAvailExtendedVirtual', ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatus()
+        status.dwLength = ctypes.sizeof(status)
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return None
+        return round(status.ullTotalPhys / 1024**2)
+    if hasattr(os, 'sysconf'):
+        try:
+            return round(os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / 1024**2)
+        except (OSError, ValueError):
+            return None
+    return None
+
+
+def tool_version(command: list[str]) -> dict:
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=10,
+        )
+    except FileNotFoundError:
+        return {'available': False, 'reason': 'not_found'}
+    except subprocess.TimeoutExpired:
+        return {'available': False, 'reason': 'timeout'}
+    except OSError:
+        return {'available': False, 'reason': 'execution_error'}
+    if result.returncode != 0:
+        return {'available': False, 'reason': 'command_failed', 'exit_code': result.returncode}
+    return {'available': True, 'version': result.stdout.strip()[:200]}
 
 
 def main() -> int:
@@ -84,17 +132,44 @@ def main() -> int:
     initial = observation()
     if not idle(initial):
         raise RuntimeError('Require one ready replica and idle valid HPA metrics before starting')
+    load_generator = yaml.safe_load((ROOT/'k8s/load-generator.yaml').read_text(encoding='utf-8'))
+    k6_image = load_generator['spec']['template']['spec']['containers'][0]['image']
+    minikube = shutil.which('minikube') or str(ROOT/'.validation/tools/minikube.exe')
+    nodes = get('nodes')
     provenance = {
         'recorded_at': datetime.now(timezone.utc).isoformat(),
         'context': args.context,
         'model': json.loads((ROOT/'models/yolov8n-export.json').read_text(encoding='utf-8')),
         'versions': json.loads(command('version', '-o', 'json')),
-        'nodes': get('nodes'),
+        'tools': {
+            'python': platform.python_version(),
+            'kubectl_client': json.loads(command('version', '--client', '-o', 'json')),
+            'docker': tool_version(['docker', '--version']),
+            'minikube': tool_version([minikube, 'version', '--short']),
+            'terraform': tool_version(['terraform', 'version']),
+            'k6_image': k6_image,
+        },
+        'host': {
+            'platform': platform.platform(),
+            'architecture': platform.machine(),
+            'logical_cpu_count': os.cpu_count(),
+            'memory_total_mib': host_memory_total_mib(),
+        },
+        'nodes': nodes,
+        'node_capacity': [
+            {
+                'cpu': node.get('status', {}).get('capacity', {}).get('cpu'),
+                'memory': node.get('status', {}).get('capacity', {}).get('memory'),
+            }
+            for node in nodes.get('items', [])
+        ],
         'deployment': get('deployment', 'ai-model-serving', '-n', 'ai-serving'),
         'hpa': get('hpa', 'ai-model-serving', '-n', 'ai-serving'),
         'pods': get('pods', '-n', 'ai-serving', '-l', SELECTOR),
         'source_sha256': {name: hashlib.sha256((ROOT/name).read_bytes()).hexdigest()
-                          for name in ['loadtest/k6-script.js', 'loadtest/sample.jpg', 'k8s/load-generator.yaml', 'scripts/record_scaling.py']},
+                          for name in ['loadtest/k6-script.js', 'loadtest/sample.jpg', 'k8s/load-generator.yaml',
+                                       'scripts/record_scaling.py', 'scripts/run_experiments.py',
+                                       'scripts/analyze_experiments.py']},
         'git_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
         'working_tree_dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip()),
     }
@@ -105,7 +180,8 @@ def main() -> int:
                 entry.pop('value', None)
     write_json(root/'environment.json', provenance)
     # Preserve exact measured sources even when later fixes change the working tree.
-    for source in ['loadtest/k6-script.js', 'loadtest/sample.jpg', 'scripts/record_scaling.py', 'scripts/run_experiments.py']:
+    for source in ['loadtest/k6-script.js', 'loadtest/sample.jpg', 'k8s/load-generator.yaml',
+                   'scripts/record_scaling.py', 'scripts/run_experiments.py', 'scripts/analyze_experiments.py']:
         (root/Path(source).name).write_bytes((ROOT/source).read_bytes())
     config = json.loads(command('create', 'configmap', 'k6-script', '-n', 'ai-serving',
                                 '--from-file=' + str(ROOT/'loadtest/k6-script.js'), '--from-file=' + str(ROOT/'loadtest/sample.jpg'), '--dry-run=client', '-o', 'json'))

@@ -8,13 +8,30 @@
       "baseline_ready_min": 1,
       "baseline_ready_max": 1,
       "max_sample_gap_s": 5.015,
-      "resource_sampling": "Retrieval-time metrics; top exposes windowed values without their source timestamps. New Pod gaps are not zero.",
+      "resource_sampling": "Pod and node metrics are retrieval-time values; top exposes windowed values without source timestamps. Missing data is never zero.",
       "baseline_complete_metric_samples": 6,
       "baseline_samples": 6,
+      "baseline_complete_node_metric_samples": 0,
+      "baseline_pod_metric_gap_reasons": {},
+      "baseline_node_metric_gap_reasons": {
+        "not_recorded": 6
+      },
       "sustained_complete_metric_samples": 14,
       "sustained_samples": 36,
+      "sustained_complete_node_metric_samples": 0,
+      "sustained_pod_metric_gap_reasons": {
+        "not_recorded": 22
+      },
+      "sustained_node_metric_gap_reasons": {
+        "not_recorded": 36
+      },
       "recovery_complete_metric_samples": 90,
-      "recovery_samples": 90
+      "recovery_samples": 90,
+      "recovery_complete_node_metric_samples": 0,
+      "recovery_pod_metric_gap_reasons": {},
+      "recovery_node_metric_gap_reasons": {
+        "not_recorded": 90
+      }
     },
     "detection-20261023-02": {
       "scale_out_delay_s": 84.251,
@@ -24,13 +41,32 @@
       "baseline_ready_min": 1,
       "baseline_ready_max": 1,
       "max_sample_gap_s": 5.013,
-      "resource_sampling": "Retrieval-time metrics; top exposes windowed values without their source timestamps. New Pod gaps are not zero.",
+      "resource_sampling": "Pod and node metrics are retrieval-time values; top exposes windowed values without source timestamps. Missing data is never zero.",
       "baseline_complete_metric_samples": 6,
       "baseline_samples": 6,
+      "baseline_complete_node_metric_samples": 0,
+      "baseline_pod_metric_gap_reasons": {},
+      "baseline_node_metric_gap_reasons": {
+        "not_recorded": 6
+      },
       "sustained_complete_metric_samples": 16,
       "sustained_samples": 36,
+      "sustained_complete_node_metric_samples": 0,
+      "sustained_pod_metric_gap_reasons": {
+        "not_recorded": 20
+      },
+      "sustained_node_metric_gap_reasons": {
+        "not_recorded": 36
+      },
       "recovery_complete_metric_samples": 85,
-      "recovery_samples": 87
+      "recovery_samples": 87,
+      "recovery_complete_node_metric_samples": 0,
+      "recovery_pod_metric_gap_reasons": {
+        "not_recorded": 2
+      },
+      "recovery_node_metric_gap_reasons": {
+        "not_recorded": 87
+      }
     },
     "detection-20261023-03": {
       "scale_out_delay_s": 84.31,
@@ -40,13 +76,32 @@
       "baseline_ready_min": 1,
       "baseline_ready_max": 1,
       "max_sample_gap_s": 5.013,
-      "resource_sampling": "Retrieval-time metrics; top exposes windowed values without their source timestamps. New Pod gaps are not zero.",
+      "resource_sampling": "Pod and node metrics are retrieval-time values; top exposes windowed values without source timestamps. Missing data is never zero.",
       "baseline_complete_metric_samples": 6,
       "baseline_samples": 6,
+      "baseline_complete_node_metric_samples": 0,
+      "baseline_pod_metric_gap_reasons": {},
+      "baseline_node_metric_gap_reasons": {
+        "not_recorded": 6
+      },
       "sustained_complete_metric_samples": 16,
       "sustained_samples": 36,
+      "sustained_complete_node_metric_samples": 0,
+      "sustained_pod_metric_gap_reasons": {
+        "not_recorded": 20
+      },
+      "sustained_node_metric_gap_reasons": {
+        "not_recorded": 36
+      },
       "recovery_complete_metric_samples": 85,
-      "recovery_samples": 87
+      "recovery_samples": 87,
+      "recovery_complete_node_metric_samples": 0,
+      "recovery_pod_metric_gap_reasons": {
+        "not_recorded": 2
+      },
+      "recovery_node_metric_gap_reasons": {
+        "not_recorded": 87
+      }
     }
   },
   "sha256": {
@@ -71,55 +126,8 @@
   },
   "git_head": "a43468eb8a9d8d92073ccb1759bc068507947260",
   "working_tree_dirty": true,
+  "analyzer_sha256": "dd5afc1584f4efa391f20e9c42b3fa537267b523470c8f5f3cd7121f38d9841d",
   "image": "ai-model-serving:detection",
-  "image_ids": [
-    "sha256:c525e81e08cb75f57410ce2aac6d1fb93c910451730d2effea1df2c2200b7422"
-  ],
-  "hpa_spec": {
-    "behavior": {
-      "scaleDown": {
-        "policies": [
-          {
-            "periodSeconds": 60,
-            "type": "Pods",
-            "value": 1
-          }
-        ],
-        "selectPolicy": "Max",
-        "stabilizationWindowSeconds": 300
-      },
-      "scaleUp": {
-        "policies": [
-          {
-            "periodSeconds": 60,
-            "type": "Pods",
-            "value": 1
-          }
-        ],
-        "selectPolicy": "Max",
-        "stabilizationWindowSeconds": 0
-      }
-    },
-    "maxReplicas": 3,
-    "metrics": [
-      {
-        "resource": {
-          "name": "cpu",
-          "target": {
-            "averageUtilization": 70,
-            "type": "Utilization"
-          }
-        },
-        "type": "Resource"
-      }
-    ],
-    "minReplicas": 1,
-    "scaleTargetRef": {
-      "apiVersion": "apps/v1",
-      "kind": "Deployment",
-      "name": "ai-model-serving"
-    }
-  },
   "container_resources": {
     "limits": {
       "cpu": "1",
@@ -129,5 +137,7 @@
       "cpu": "500m",
       "memory": "512Mi"
     }
-  }
+  },
+  "tools": {},
+  "host": {}
 }

@@ -1,6 +1,6 @@
 # Deployment ai-model-serving: single-worker CPU object detection.
 #
-# Sizing for the 2 vCPU / 8 GiB single-node k3s lab (docs/KUBERNETES.md):
+# Sizing notes and local resource evidence: docs/RUNBOOK.md and results/ANALYSIS.md.
 #   requests  cpu 500m / memory 512Mi  -> HPA utilization target is measurable;
 #                                         3 replicas plus k3s system overhead
 #                                         fit within the 2 vCPU / 8 GiB node.

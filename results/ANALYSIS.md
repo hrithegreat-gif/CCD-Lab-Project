@@ -30,6 +30,10 @@ All completed 200 responses passed the detection response-shape check; there
 were no invalid 200s, unexpected 4xx, or 5xx responses. The 429s are capacity
 rejections during sustained load, not successful inference throughput. Across
 the sustained phases, 5,792 requests succeeded and 128,547 were rate-limited.
+There were 134,363 sustained attempts total, so the unsuccessful-attempt rate
+was 95.689%, including the 24 interrupted attempts. Baseline had 173 successes
+from 175 attempts (1.143% unsuccessful). These rates describe the bounded
+saturation workload; they are not service reliability or SLA estimates.
 
 ## Autoscaling and resources
 
@@ -46,6 +50,10 @@ were incomplete during sustained load: complete serving-Pod metric coverage was
 14/36, 16/36, and 16/36 samples. Do not treat these partial resource averages
 as representative peak usage. Baseline coverage was 6/6 in all runs and
 recovery coverage was 90/90, 85/87, and 85/87.
+These historical runs did not record node CPU/memory or host RAM, so node
+resource values are intentionally blank. The recorder now captures timestamped
+node and Pod metrics with explicit unavailable/partial reason codes; subsequent
+runs can populate both views without changing these historical observations.
 
 ## Container calibration
 
@@ -71,3 +79,12 @@ node CPU, metric-server values are windowed, and newly scheduled Pods can be
 missing from individual samples. The measurements do not show linear throughput
 growth with replica count. No AWS deployment, hosted CI run, or cloud HPA result
 is claimed here. See `docs/EVIDENCE.md` for the verification ledger.
+
+Replay the committed compact evidence without rerunning the workload:
+
+```powershell
+python scripts\analyze_experiments.py results\evidence\detection-20261023
+```
+
+This regenerates the same request/scaling rows and figures; node resource plots
+are blank for these historical samples because node metrics were not captured.

@@ -7,7 +7,10 @@ and prepared Terraform/GitHub Actions deployment infrastructure.
 
 [Source code](https://github.com/hrithegreat-gif/CCD-Lab-Project) ·
 [API contract](docs/API_CONTRACT.md) · [Architecture](docs/ARCHITECTURE.md) ·
-[Runbook](docs/RUNBOOK.md) · [Model provenance and license](models/README.md)
+[Runbook](docs/RUNBOOK.md) · [Scope reconciliation](docs/SCOPE_RECONCILIATION.md) ·
+[Demo outline](docs/DEMO.md) ·
+[Presentation](docs/CCD_Detection_Serving_Project.pptx) ·
+[Model provenance and license](models/README.md)
 
 ## Quick start
 
@@ -63,7 +66,7 @@ Kubernetes scales Pods, not worker processes. Three Pods on a single node share
 that node's CPU and are not high availability. The current local Minikube
 measurements and their sampling limits are in [results/ANALYSIS.md](results/ANALYSIS.md).
 
-For a local container, run `docker build -t ai-model-serving:local .` and use
+For a local container, run `docker build -t ai-model-serving:detection .` and use
 the hardened smoke helper `scripts/test-container.ps1` on Windows. The image
 bakes the pinned model at build time and runs as UID 10001. It does not require
 PyTorch or Ultralytics at serving time.

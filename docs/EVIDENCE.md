@@ -4,8 +4,10 @@
 `python -m pytest tests/ -q -p no:cacheprovider`: 296 passed in 8.30 seconds.
 These are historical baseline results, not detection acceptance.
 
-The owner intentionally removed the previous docs and deferred the final report.
-Detection export and inference are verified below. Container, scaling and AWS acceptance remain pending.
+Historical migration status at that point: detection export and inference were
+verified, while container, scaling, and AWS acceptance had not yet completed.
+The later phase entries below supersede the pending container and local-scaling
+claims. AWS remains undeployed.
 
 Migration phase 1: optional adapters and their tests removed; remaining full suite: 232 passed in 3.53 seconds. The reduction is the explicitly removed adapter coverage; core safety/lifecycle coverage remains.
 
@@ -86,3 +88,22 @@ ran read-only/non-root with a temporary generated API key, passed real
 detection, authorization, validation, and metrics checks, and passed
 `pip check`. The temporary test container was removed. The observed
 164.3-MiB container snapshot is not a peak-memory measurement.
+
+Implementation follow-up (2026-10-25): updated the Windows fresh-deployment
+runbook, formally reconciled the superseded sentiment contract, corrected stale
+documentation references, and added a final report/demo outline with durable
+Studio screenshots. Experiment recording now samples node as well as Pod CPU
+and memory, records explicit unavailable/partial metric reasons, and captures
+host/tool provenance for future runs. The analyzer plots node and Pod totals
+separately and replays the committed compact evidence. Historical runs were
+replayed successfully; their absent node/host measurements remain blank.
+
+Follow-up verification: full Python suite **277 passed**; frontend contract
+suite **60 passed**; guarded cleanup test passed; compact-evidence replay
+regenerated all nine phase rows and plots, reproducing the performance CSV
+byte-for-byte. The requested eight-slide deck was generated and validated
+(eight slides, two embedded screenshots, all shapes in bounds). Pylance syntax checks passed for
+`record_scaling.py`, `run_experiments.py`, and `analyze_experiments.py`. A fresh
+Docker/Minikube deployment was not rerun because Docker Desktop's Linux engine
+pipe was unavailable and the local profile did not exist. No hosted CI,
+contribution confirmation, or AWS acceptance is claimed.

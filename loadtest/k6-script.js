@@ -1,4 +1,4 @@
-// Bounded k6 benchmark for the CPU object-detection API (docs/KUBERNETES.md).
+// Bounded k6 benchmark for the CPU object-detection API (loadtest/README.md).
 //
 // Scenario (sequential, in one run):
 //   warmup    15s @ 1 VU   (fills caches, verifies the service)

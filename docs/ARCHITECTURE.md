@@ -15,6 +15,38 @@
 - **Infrastructure:** Docker, Kubernetes/HPA, k6 experiment tooling, and
   optional Terraform plus GitHub OIDC/SSM deployment to one EC2 k3s node.
 
+## Request and scaling topology
+
+```mermaid
+flowchart LR
+    Client[Browser or API client] --> Service[Kubernetes Service]
+    Service --> Pod1[Serving Pod 1<br/>FastAPI + ONNX CPU]
+    Service --> Pod2[Serving Pod 2<br/>optional scale-out]
+    Service --> Pod3[Serving Pod 3<br/>optional scale-out]
+    HPA[CPU HPA] -->|replica target| Deployment[Deployment]
+    Deployment --> Pod1
+    Deployment --> Pod2
+    Deployment --> Pod3
+    Metrics[Metrics Server] -->|CPU metrics| HPA
+    subgraph Local["Local cluster: single node"]
+      Service
+      Pod1
+      Pod2
+      Pod3
+      HPA
+      Deployment
+      Metrics
+    end
+    subgraph Cloud["Optional AWS deployment: not locally accepted"]
+      CloudClient[Browser or API client] --> CloudService[Kubernetes Service]
+      CloudService --> CloudPod[Serving Pod on EC2 k3s]
+    end
+```
+
+The AWS client/service/Pod path is separate from the tested local request path.
+The local replicas share one node; scaling replicas does not add node CPU or
+establish high availability.
+
 ## Request path
 
 1. Auth middleware rejects an invalid key before reading a protected body.

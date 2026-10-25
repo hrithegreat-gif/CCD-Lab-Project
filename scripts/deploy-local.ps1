@@ -11,7 +11,7 @@ $profileName = 'ai-serving-local'
 Push-Location $projectRoot
 try {
     $python = Join-Path $projectRoot '.venv-review/Scripts/python.exe'
-    if (-not (Test-Path -LiteralPath $python)) { throw 'Run Phase 1 setup first.' }
+    if (-not (Test-Path -LiteralPath $python)) { throw 'Run scripts/setup-phase1.ps1 first.' }
     $minikube = Join-Path $projectRoot '.validation/tools/minikube.exe'
     if (-not (Test-Path -LiteralPath $minikube)) {
         $minikube = (Get-Command minikube -ErrorAction Stop).Source
@@ -64,7 +64,7 @@ try {
             }
         }
     }
-    Write-Output 'PASS: local rollout and metrics. Complete Service smoke checks in docs/PHASE_2.md.'
+    Write-Output 'PASS: local rollout and metrics. Complete Service smoke checks in docs/RUNBOOK.md.'
 } finally {
     Pop-Location
 }

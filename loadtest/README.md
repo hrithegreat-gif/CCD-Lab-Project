@@ -5,9 +5,10 @@ follow the [runbook](../docs/RUNBOOK.md); measured local results are in
 [results/ANALYSIS.md](../results/ANALYSIS.md).
 
 Real, bounded k6 benchmark for the deployed service. Nothing in this directory
-produces performance numbers by itself; results exist only after a measured run
-and are recorded manually in results/performance.csv (or under results/raw/,
-which is git-ignored).
+produces performance numbers by itself. A measured run is captured by
+`scripts/run_experiments.py` and analyzed into `results/performance.csv`, plots,
+and compact committed evidence. Raw run directories remain git-ignored; they
+are not manually transcribed or edited.
 
 ## Files
 
@@ -110,8 +111,11 @@ scale-in observation is cut short:
 
 Use `--kubectl <matching-client-path> --context ai-serving-local` for this local
 cluster. Existing output files are refused to prevent accidentally concatenating
-different experiments. Writes one JSON sample per line (HPA replicas, ready counts, per-Pod CPU/mem
-from Metrics Server) to results/raw/scaling-<timestamp>.jsonl.
+different experiments. Writes one JSON sample per line (HPA replicas, ready counts, per-Pod and
+per-node CPU/memory from Metrics Server, and explicit missing/partial metric
+reason codes) to results/raw/scaling-<timestamp>.jsonl. Metrics are
+retrieval-time, windowed observations; a missing Pod or node is never treated
+as zero usage.
 
 ## Documenting results
 
@@ -127,6 +131,16 @@ deployment, waits for recovery after every run, retains completed Jobs, and
 preserves raw summaries. It produces baseline, sustained and recovery rows in
 `results/performance.csv`, plots, and compact evidence. Do not overwrite or
 hand-edit generated measurements.
+
+Replay the committed compact evidence without rerunning k6:
+
+    python scripts/analyze_experiments.py results/evidence/detection-20261023
+
+The evidence bundle contains an analysis-ready environment record, flattened
+per-run summaries/timings/resource samples/completion markers, the analyzer
+source snapshot, and its SHA-256 in `derived.json`. A replay regenerates
+analysis rows and plots from the preserved observations; older bundles without
+node metrics keep those node values blank rather than estimating them.
 
 Use per-phase successful throughput and latency, excluding warm-up and fast
 rejections. Recovery has no generated requests. The executed local experiments

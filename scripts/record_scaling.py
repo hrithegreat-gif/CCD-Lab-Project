@@ -33,6 +33,49 @@ def kubectl_json(kubectl: str, args: list[str], context: str | None = None) -> d
     return json.loads(result.stdout)
 
 
+def top_metrics(
+    kubectl: str,
+    resource: str,
+    namespace: str | None = None,
+    selector: str | None = None,
+    context: str | None = None,
+    expected_names: set[str] | None = None,
+) -> tuple[list[dict] | None, dict]:
+    args = ["top", resource]
+    if namespace:
+        args.extend(["-n", namespace])
+    if selector:
+        args.extend(["-l", selector])
+    args.extend(["--no-headers", "--request-timeout=10s"])
+    result = subprocess.run(
+        [kubectl, *(["--context", context] if context else []), *args],
+        capture_output=True, text=True, timeout=20,
+    )
+    if result.returncode != 0:
+        return None, {"available": False, "reason": "command_failed", "exit_code": result.returncode}
+
+    entries = []
+    for line in result.stdout.strip().splitlines():
+        parts = line.split()
+        if resource == "nodes" and len(parts) >= 4:
+            entries.append({"name": parts[0], "cpu": parts[1], "memory": parts[3]})
+        elif resource == "pods" and len(parts) >= 3:
+            entries.append({"name": parts[0], "cpu": parts[1], "memory": parts[2]})
+    if not entries:
+        return None, {"available": False, "reason": "empty_or_malformed_output"}
+
+    returned_names = {entry["name"] for entry in entries}
+    missing_names = sorted(expected_names - returned_names) if expected_names is not None else []
+    status = {
+        "available": not missing_names,
+        "reason": "partial_metrics" if missing_names else "complete",
+    }
+    if expected_names is not None:
+        status["expected_count"] = len(expected_names)
+        status["missing_names"] = missing_names
+    return entries, status
+
+
 def sample(kubectl: str, namespace: str, selector: str, context: str | None = None) -> dict:
     record: dict = {"timestamp": datetime.now(timezone.utc).isoformat()}
 
@@ -75,6 +118,12 @@ def sample(kubectl: str, namespace: str, selector: str, context: str | None = No
     ]
 
     pods = kubectl_json(kubectl, ["get", "pods", "-n", namespace, "-l", selector], context)
+    live_pod_names = {
+        item.get("metadata", {}).get("name")
+        for item in pods.get("items", [])
+        if not item.get("metadata", {}).get("deletionTimestamp")
+    }
+    live_pod_names.discard(None)
     record["pods"] = [
         {
             "name": item.get("metadata", {}).get("name"),
@@ -89,25 +138,19 @@ def sample(kubectl: str, namespace: str, selector: str, context: str | None = No
         for item in pods.get("items", [])
     ]
 
-    # Metrics Server sample; absent or broken metrics are recorded as a note
-    # rather than failing the run (CPU HPA cannot work without them though).
-    top = subprocess.run(
-        [kubectl, *(["--context", context] if context else []), "top", "pods", "-n", namespace, "-l", selector,
-         "--no-headers", "--request-timeout=10s"],
-        capture_output=True, text=True, timeout=20,
+    record["pod_metrics"], record["pod_metrics_status"] = top_metrics(
+        kubectl, "pods", namespace, selector, context, live_pod_names
     )
-    if top.returncode == 0 and top.stdout.strip():
-        entries = []
-        for line in top.stdout.strip().splitlines():
-            parts = line.split()
-            if len(parts) >= 3:
-                entries.append({"name": parts[0], "cpu": parts[1], "memory": parts[2]})
-        record["pod_metrics"] = entries
-    else:
-        record["pod_metrics"] = None
-        record["notes"] = (
-            "kubectl top pods failed: Metrics Server may be missing or warming up"
-        )
+    nodes = kubectl_json(kubectl, ["get", "nodes"], context)
+    node_names = {
+        item.get("metadata", {}).get("name")
+        for item in nodes.get("items", [])
+        if item.get("metadata", {}).get("name")
+    }
+    record["node_names"] = sorted(node_names)
+    record["node_metrics"], record["node_metrics_status"] = top_metrics(
+        kubectl, "nodes", context=context, expected_names=node_names
+    )
     return record
 
 

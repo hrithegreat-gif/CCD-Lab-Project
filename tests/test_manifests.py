@@ -861,6 +861,7 @@ def test_deploy_workflow_is_manual_oidc_and_bounded(deploy_workflow):
 PERFORMANCE_CSV_NUMERIC_COLUMNS = (
     "concurrency", "duration_s", "total_requests", "successful_requests",
     "throughput_rps", "mean_latency_ms", "p95_latency_ms", "error_rate",
+    "pod_cpu_millicores", "pod_memory_mib", "node_cpu_millicores", "node_memory_mib",
     "ready_replicas_min", "ready_replicas_max",
 )
 
@@ -873,6 +874,7 @@ def test_performance_csv_schema_allows_future_measurements():
         return  # untouched until a real measurement exists
     header = rows[0]
     assert header[0] == "run_id", "header schema changed unexpectedly"
+    assert {"pod_metric_coverage", "node_metric_coverage"} <= set(header)
     for row in rows[1:]:
         values = row
         assert len(values) == len(header), "data row must match header width"

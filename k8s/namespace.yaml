@@ -1,4 +1,4 @@
-# Application namespace for the AI serving lab (docs/KUBERNETES.md).
+# Application namespace for the AI serving lab (docs/RUNBOOK.md).
 apiVersion: v1
 kind: Namespace
 metadata:

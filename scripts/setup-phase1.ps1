@@ -26,7 +26,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
     & $pythonPath scripts/check_dependencies.py
     if ($LASTEXITCODE -ne 0) { throw 'Dependency verification failed.' }
-    Write-Output 'PASS: Phase 1 environment ready. Follow docs/PHASE_1.md for model and HTTP acceptance.'
+    Write-Output 'PASS: local environment ready. Follow docs/RUNBOOK.md for model and HTTP acceptance.'
 } finally {
     Pop-Location
 }

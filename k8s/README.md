@@ -20,9 +20,13 @@ Render and apply (cloud):
 
 Local cluster without a pull secret:
 
-    python scripts/render_k8s.py --image ai-model-serving:dev \
+    python scripts/render_k8s.py --image ai-model-serving:detection \
         --pull-secret none --output .validation/rendered-local.yaml
     kubectl apply -f .validation/rendered-local.yaml
+
+For the fresh Windows cluster, Secret setup, image import, Metrics Server,
+authenticated smoke test and cleanup sequence, follow the
+[runbook](../docs/RUNBOOK.md#fresh-windows-local-deployment).
 
 Verification (requires a reachable cluster with Metrics Server):
 

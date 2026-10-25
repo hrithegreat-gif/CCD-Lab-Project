@@ -29,13 +29,50 @@ def test_no_ready_condition_is_not_ready(monkeypatch):
                                 'status': {'currentMetrics': [{'resource': {'current': {'averageUtilization': 25}}}]}}]}, {'items': []}, {'items': [{
         'metadata': {'name': 'pending'},
         'status': {'phase': 'Pending', 'conditions': [{'type': 'PodScheduled', 'status': 'True'}]},
-    }]}])
+    }]}, {'items': [{'metadata': {'name': 'node-1'}}]}])
     monkeypatch.setattr(recorder, 'kubectl_json', lambda *a: next(responses))
     monkeypatch.setattr(recorder.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout=''))
     record = recorder.sample('kubectl', 'test', 'app=test')
     assert record['pods'][0]['ready'] is False
     assert record['hpa']['targets'][0]['target_cpu_percent'] == 70
     assert record['hpa']['targets'][0]['current_cpu_percent'] == 25
+    assert record['pod_metrics_status']['reason'] == 'empty_or_malformed_output'
+    assert record['node_names'] == ['node-1']
+
+
+def test_top_metrics_records_partial_and_unavailable_reasons(monkeypatch):
+    monkeypatch.setattr(
+        recorder.subprocess, 'run',
+        lambda *a, **kw: SimpleNamespace(returncode=0, stdout='pod-a 500m 100Mi\n'),
+    )
+    metrics, status = recorder.top_metrics(
+        'kubectl', 'pods', 'ai-serving', expected_names={'pod-a', 'pod-b'}
+    )
+    assert metrics == [{'name': 'pod-a', 'cpu': '500m', 'memory': '100Mi'}]
+    assert status == {
+        'available': False,
+        'reason': 'partial_metrics',
+        'expected_count': 2,
+        'missing_names': ['pod-b'],
+    }
+    monkeypatch.setattr(
+        recorder.subprocess, 'run',
+        lambda *a, **kw: SimpleNamespace(
+            returncode=0, stdout='node-a 250m 12% 1024Mi 30%\n'
+        ),
+    )
+    metrics, status = recorder.top_metrics(
+        'kubectl', 'nodes', expected_names={'node-a'}
+    )
+    assert metrics == [{'name': 'node-a', 'cpu': '250m', 'memory': '1024Mi'}]
+    assert status['reason'] == 'complete'
+    monkeypatch.setattr(
+        recorder.subprocess, 'run',
+        lambda *a, **kw: SimpleNamespace(returncode=1, stdout=''),
+    )
+    metrics, status = recorder.top_metrics('kubectl', 'nodes')
+    assert metrics is None
+    assert status == {'available': False, 'reason': 'command_failed', 'exit_code': 1}
 
 
 def test_workload_log_requires_unique_start_and_complete_summary():
@@ -52,6 +89,16 @@ def test_resource_aggregation_rejects_partial_metrics():
     assert analysis.resource_total(record) is None
     record['pod_metrics'].append({'name':'b','cpu':'0.25','memory':'102400Ki'})
     assert analysis.resource_total(record) == (750,200)
+    record.update(node_names=['node-a', 'node-b'],
+                  node_metrics=[{'name':'node-a','cpu':'1','memory':'1Gi'}])
+    assert analysis.node_resource_total(record) is None
+    record['node_metrics'].append({'name':'node-b','cpu':'500m','memory':'512Mi'})
+    assert analysis.node_resource_total(record) == (1500,1536)
+    partial={'pods': [{'name':'a'}, {'name':'b'}],
+             'pod_metrics':[{'name':'a','cpu':'500m','memory':'100Mi'}]}
+    assert analysis.metric_gap_reasons([partial], 'pod_metrics', analysis.resource_total) == {
+        'not_recorded': 1,
+    }
 
 
 def phase(seconds=180):
@@ -72,7 +119,10 @@ def test_phase_boundaries_and_delays_use_ready_replicas(tmp_path):
     def record(seconds,count):
         return {'timestamp':datetime.fromtimestamp(seconds,timezone.utc).isoformat(),
                 'deployments':[{'name':'ai-model-serving','ready_replicas':count}],
-                'pods':[{'name':'pod'}], 'pod_metrics':[{'name':'pod','cpu':'500m','memory':'100Mi'}]}
+                'pods':[{'name':'pod'}], 'pod_metrics':[{'name':'pod','cpu':'500m','memory':'100Mi'}],
+                'pod_metrics_status':{'available':True,'reason':'complete'},
+                'node_names':['node'], 'node_metrics':[{'name':'node','cpu':'1','memory':'1Gi'}],
+                'node_metrics_status':{'available':True,'reason':'complete'}}
     samples=[record(t,n) for t,n in [(1000,1),(1015,1),(1040,1),(1045,1),(1060,2),(1220,3),
                                     (1225,3),(1525,2),(1585,1)]]
     for name,data in [('completion.json',{'recovered':True}),('timing.json',{'start_epoch':1000}),
@@ -89,5 +139,14 @@ def test_phase_boundaries_and_delays_use_ready_replicas(tmp_path):
     assert delays['return_to_initial_delay_s']==360
     assert rows[0]['ready_replicas_max']==1  # sustained starts exactly at 1045
     assert rows[1]['error_rate']==.2  # includes 429 and interrupted, not just 5xx
+    assert rows[1]['pod_metric_coverage']=='3/3'
+    assert rows[1]['node_metric_coverage']=='3/3'
+    assert rows[1]['node_memory_mib']==1024
     assert 'throughput_rps' not in rows[2]  # no invented idle latency/throughput
     assert rows[2]['scale_in_delay_s']==300
+    compact_root=tmp_path/'compact'
+    compact_root.mkdir()
+    for filename in ('completion.json','timing.json','summary.json','scaling.jsonl'):
+        (compact_root/f'{tmp_path.name}-{filename}').write_bytes((tmp_path/filename).read_bytes())
+    replay_rows,*_=analysis.derive(compact_root/tmp_path.name,env,compact=True)
+    assert replay_rows==rows

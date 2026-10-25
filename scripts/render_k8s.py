@@ -7,7 +7,7 @@ host, so this runs on the EC2 instance with plain python3.
 
 Examples:
     python scripts/render_k8s.py --image 123.dkr.ecr.ap-south-1.amazonaws.com/ccd-lab-serving:abc123
-    python scripts/render_k8s.py --image ai-model-serving:dev --pull-secret none
+    python scripts/render_k8s.py --image ai-model-serving:detection --pull-secret none
     python scripts/render_k8s.py --image <uri> --include load-generator.yaml
 """
 from __future__ import annotations

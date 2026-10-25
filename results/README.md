@@ -15,6 +15,9 @@ and [the runbook](../docs/RUNBOOK.md). Preserve raw summaries and scaling
 samples, include the idle scale-down window, and derive CSV data with
 `scripts/analyze_experiments.py`. `throughput_rps` is successful inference
 goodput; 429s and interrupted attempts are reported separately in `notes`.
+The checked-in compact bundle can be replayed directly with
+`python scripts/analyze_experiments.py results/evidence/detection-20261023`;
+node metrics are blank for the historical runs because they were not recorded.
 
 Never commit API keys, kubeconfigs, Terraform state/plan files, or unsanitized
 command logs. Cloud artifacts are valid evidence only after an authorized
