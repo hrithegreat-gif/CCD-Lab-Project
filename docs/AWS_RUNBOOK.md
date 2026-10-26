@@ -38,8 +38,10 @@ deployment, tunnel verification, and teardown instructions, follow
 6. Obtain successful CI for the exact commit SHA, then manually dispatch
    `.github/workflows/deploy-aws.yml` and approve the environment deployment.
 7. Use `aws ssm start-session` with `AWS-StartPortForwardingSession` to forward
-   NodePort 30080 to a local port. Run `scripts/smoke_test.py` against that
-   forwarded URL with the API key supplied through the environment.
+   NodePort 30080 to a local port. Open the forwarded URL in a browser and enter
+   the deployment API key in Studio's session-access prompt. Run
+   `scripts/smoke_test.py` against that forwarded URL with the same key supplied
+   through the environment.
 8. For cloud HPA acceptance, create the k6 ConfigMap from both the script and
    sample image, apply `k8s/load-generator.yaml`, and record replica/CPU/latency
    behavior. Store evidence in the approved results bucket without secrets.

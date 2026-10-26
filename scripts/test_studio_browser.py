@@ -55,10 +55,21 @@ def main():
         context = browser.new_context(viewport={'width': 1440, 'height': 1000}, accept_downloads=True)
         page = context.new_page()
         errors = []
+        responses = []
         page.on('pageerror', lambda e: errors.append(str(e)))
+        page.on('response', lambda response: responses.append((response.url, response.status)))
+        auth_required = page.request.get(f'{base}/studio/config').json()['auth_required']
         page.goto(base)
         if key:
-            page.locator('#auth-open').click()
+            if auth_required:
+                expect(page.locator('#model-state')).to_have_text('Authentication required')
+                expect(page.locator('#auth-dialog')).to_be_visible()
+                assert not any(
+                    urllib.parse.urlsplit(url).path == '/api/models' and status == 401
+                    for url, status in responses
+                ), 'Studio requested model status without the configured API key'
+            else:
+                page.locator('#auth-open').click()
             page.locator('#api-key').fill(key)
             page.locator('#auth-save').click()
         expect(page.locator('#model-state')).to_have_text('Ready')
@@ -93,8 +104,9 @@ def main():
         assert key not in page.locator('#history').inner_text() if key else True
         page.reload()
         expect(page.locator('#session-count')).to_have_text('0')
-        if key:
-            expect(page.locator('#model-state')).to_have_text('Unavailable')
+        if auth_required:
+            expect(page.locator('#model-state')).to_have_text('Authentication required')
+            expect(page.locator('#auth-dialog')).to_be_visible()
         assert not errors, errors
         context.close()
         browser.close()

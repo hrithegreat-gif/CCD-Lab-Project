@@ -216,6 +216,7 @@ textarea { width: 100%; min-height: 190px; resize: vertical; line-height: 1.55; 
 }
 .model-state[data-state="ready"] { background: var(--good-bg); color: var(--good); }
 .model-state[data-state="loading"] { background: var(--warn-bg); color: var(--warn); }
+.model-state[data-state="auth-required"] { background: var(--warn-bg); color: var(--warn); }
 .model-state[data-state="disabled"], .model-state[data-state="unavailable"] { background: var(--bad-bg); color: var(--bad); }
 .model-description { margin: 0; color: var(--muted); font-size: 13.5px; }
 .model-facts { display: flex; gap: 26px; margin: 4px 0 0; }

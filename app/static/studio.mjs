@@ -4,6 +4,11 @@ let config=null,key='',file=null,objectURL=null,result=null,controller=null,revi
 const history=[];
 function message(text){$('message').textContent=text;}
 function buttons(){ $('run').disabled=!file||!ready||!!controller;$('cancel').disabled=!controller;$('download').disabled=!result; }
+function openAuthDialog(clear=true){
+ if(clear)$('api-key').value='';
+ if(!$('auth-dialog').open)$('auth-dialog').showModal();
+ $('api-key').focus();
+}
 function clearResult(){result=null;$('detections').replaceChildren();$('result-json').textContent='{}';$('timings').textContent='';$('result-summary').textContent='Run detection to locate objects.';const c=$('overlay');c.getContext('2d').clearRect(0,0,c.width,c.height);buttons();}
 function stop(){revision++;controller?.abort();controller=null;buttons();}
 async function selectFile(chosen){
@@ -49,10 +54,17 @@ async function refresh(){
  try{
   const next=normalizeConfig(await requestApi('/studio/config'));
   if(!config){$('conf').value=next.default_conf;$('iou').value=next.default_iou;updateRanges();}config=next;
+  if(currentKey!==key)return;
+  if(next.auth_required&&!currentKey){
+   $('service-status').textContent='Enter the deployment API key to check model status.';
+   $('model-state').textContent='Authentication required';$('model-state').dataset.state='auth-required';
+   openAuthDialog(false);
+   return;
+  }
   const [health,models]=await Promise.all([requestApi('/health/ready'),requestApi('/api/models',{key:currentKey})]);
   if(currentKey!==key)return;const model=models.find(m=>m.id==='yolov8n');ready=health.status==='ready'&&model?.ready===true;
   $('model-metadata').textContent=JSON.stringify(model||{},null,2);$('service-status').textContent=ready?'Model ready / CPU':'Model unavailable';$('model-state').textContent=ready?'Ready':'Unavailable';$('model-state').dataset.state=ready?'ready':'unavailable';
- }catch(e){if(currentKey===key){$('service-status').textContent=e.message;$('model-state').textContent='Unavailable';}}
+ }catch(e){if(currentKey===key){$('service-status').textContent=e.message;$('model-state').textContent='Unavailable';$('model-state').dataset.state='unavailable';}}
  buttons();
 }
 function updateRanges(){for(const k of ['conf','iou'])$(k+'-value').textContent=Number($(k).value).toFixed(2);}
@@ -62,7 +74,7 @@ for(const button of document.querySelectorAll('[data-sample]'))button.addEventLi
 $('run').addEventListener('click',run);$('cancel').addEventListener('click',()=>{stop();message('Stopped waiting; server work may continue.');});
 $('clear').addEventListener('click',()=>{stop();file=null;if(objectURL)URL.revokeObjectURL(objectURL);objectURL=null;$('preview').removeAttribute('src');$('preview').hidden=true;$('image-file').value='';clearResult();message('');});
 for(const k of ['conf','iou'])$(k).addEventListener('input',updateRanges);
-$('refresh').addEventListener('click',refresh);$('auth-open').addEventListener('click',()=>{$('api-key').value='';$('auth-dialog').showModal();$('api-key').focus();});$('auth-close').addEventListener('click',()=>{$('api-key').value='';$('auth-dialog').close();});$('auth-save').addEventListener('click',()=>{stop();key=$('api-key').value.trim();$('api-key').value='';$('auth-dialog').close();refresh();});
+$('refresh').addEventListener('click',refresh);$('auth-open').addEventListener('click',()=>openAuthDialog());$('auth-close').addEventListener('click',()=>{$('api-key').value='';$('auth-dialog').close();});$('auth-save').addEventListener('click',()=>{stop();key=$('api-key').value.trim();$('api-key').value='';$('auth-dialog').close();refresh();});
 $('auth-dialog').addEventListener('close',()=>{$('api-key').value='';});
 for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>{for(const v of ['playground','models','runs']){$('view-'+v).hidden=v!==button.dataset.view;$('nav-'+v).removeAttribute('aria-current');}button.setAttribute('aria-current','page');});
 function tab(json){$('overview').hidden=json;$('json-panel').hidden=!json;for(const id of ['overview-tab','json-tab']){const active=(id==='json-tab')===json;$(id).setAttribute('aria-selected',String(active));$(id).tabIndex=active?0:-1;}}

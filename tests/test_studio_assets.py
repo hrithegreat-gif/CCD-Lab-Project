@@ -54,6 +54,8 @@ def test_key_field_never_submits_via_native_get_or_has_a_default(document):
     assert key["type"] == "password"
     assert key["autocomplete"] == "off"
     assert "name" not in key and "value" not in key
+    dialog = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert "AWS Systems Manager Parameter Store" in dialog
     assert "localStorage" not in (STATIC / "studio.mjs").read_text(encoding="utf-8")
     assert "sessionStorage" not in (STATIC / "studio.mjs").read_text(encoding="utf-8")
 
