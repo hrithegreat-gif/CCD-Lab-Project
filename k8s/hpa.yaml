@@ -3,8 +3,8 @@
 # HPA. Resource requests define the utilization denominator (500m per Pod).
 #
 # Conservative behavior for a single 2 vCPU node: at most one Pod is added or
-# removed per minute, and scale-in waits 5 minutes of low load so rolling
-# experiments and short spikes do not flap. maxReplicas 3 fits the node on
+# removed per minute, and scale-in waits 60 seconds of low load for a faster, repeatable
+# demonstration. This is a demo setting; longer windows can reduce flapping in production. maxReplicas 3 fits the node on
 # REQUESTS: 3 * (500m cpu / 512Mi memory) plus k3s system overhead stays inside
 # 2 vCPU / 8 GiB. Limits over-commit CPU via time slicing and add no compute;
 # additional replicas never make the node faster.
@@ -39,8 +39,7 @@ spec:
           value: 1
           periodSeconds: 60
     scaleDown:
-      # Absorb short dips; the 300s window also matches the documented
-      # scale-in observation wait after load stops.
+      # Short stabilization window for the classroom elasticity demonstration.
       stabilizationWindowSeconds: 60
       selectPolicy: Max
       policies:

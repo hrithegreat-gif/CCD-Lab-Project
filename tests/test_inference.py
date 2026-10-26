@@ -1,6 +1,10 @@
 """Detection API failures retain bounded capacity and private error details."""
 import pytest
-from app.inference import InferenceTimeout
+from PIL import Image
+from app import inference as inference_module
+from app.config import Settings
+from app.inference import InferenceTimeout, YoloDetector
+from app.model_registry import YOLOV8N
 from tests.conftest import image_bytes
 
 @pytest.mark.parametrize('query',['conf=.01','conf=nan','conf=inf','iou=.09','iou=.96','max_detections=0','max_detections=101','max_detections=1.5'])
@@ -42,3 +46,38 @@ def test_slot_held_during_predict(application,client,monkeypatch):
     assert client.post('/api/detect',content=image_bytes(),headers={'Content-Type':'image/jpeg'}).status_code==200
     assert application.state.slots.acquire(False)
     application.state.slots.release()
+
+
+def test_detector_timeout_is_deterministic(monkeypatch):
+    """Exercise the native-timeout branch without a scheduler-sensitive deadline."""
+    class ImmediateTimer:
+        def __init__(self, _interval, function):
+            self.function = function
+
+        def start(self):
+            self.function()
+
+        def cancel(self):
+            pass
+
+    class Item:
+        def __init__(self, name):
+            self.name = name
+
+    class TerminatedSession:
+        def get_inputs(self):
+            return [Item("images")]
+
+        def get_outputs(self):
+            return [Item("output")]
+
+        def run(self, _outputs, _feeds, run_options=None):
+            assert run_options is not None and run_options.terminate
+            raise RuntimeError("terminated by test timer")
+
+    monkeypatch.setattr(inference_module.threading, "Timer", ImmediateTimer)
+    model = YoloDetector(YOLOV8N, Settings(_env_file=None))
+    model._session = TerminatedSession()
+    with Image.new("RGB", (64, 48)) as image:
+        with pytest.raises(InferenceTimeout):
+            model.predict(image, 0.25, 0.45, 100)
