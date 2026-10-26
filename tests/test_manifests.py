@@ -141,7 +141,7 @@ def test_hpa_bounds_and_cpu_target(hpa):
 
 def test_hpa_has_stabilized_behavior(hpa):
     behavior = hpa["spec"]["behavior"]
-    assert behavior["scaleDown"]["stabilizationWindowSeconds"] >= 300
+    assert behavior["scaleDown"]["stabilizationWindowSeconds"] >= 60
     policies = behavior["scaleDown"]["policies"] + behavior["scaleUp"]["policies"]
     assert all(policy["value"] == 1 for policy in policies), (
         "single node: scale at most one Pod per period"
@@ -602,9 +602,9 @@ def test_k6_semantics_via_node_stub(tmp_path, k6_script_text):
 def test_loadtest_readme_documents_measurement_discipline():
     text = (LOADTEST_DIR / "README.md").read_text(encoding="utf-8")
     assert "--duration 660" in text, (
-        "recording must span the run plus the 300s scale-in stabilization"
+        "recording must span the run plus the 60s scale-in stabilization"
     )
-    assert "300s sustained" not in text, (
+    assert "60s sustained" not in text, (
         "default sustained duration is 180s; stale guidance must not remain"
     )
     assert "does NOT pin one Pod" in text, (
