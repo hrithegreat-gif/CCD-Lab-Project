@@ -41,7 +41,7 @@ spec:
     scaleDown:
       # Absorb short dips; the 300s window also matches the documented
       # scale-in observation wait after load stops.
-      stabilizationWindowSeconds: 300
+      stabilizationWindowSeconds: 60
       selectPolicy: Max
       policies:
         - type: Pods
