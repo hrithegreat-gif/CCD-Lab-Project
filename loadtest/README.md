@@ -103,11 +103,11 @@ runs where the service lives. Use the tunnel for functional/smoke checks.
 ## Record scaling during the run (second terminal)
 
 Cover the whole experiment: recording must span warmup + baseline + sustained
-PLUS the 300s scale-in stabilization window and margin, otherwise the
+PLUS the 60s scale-in stabilization window and margin, otherwise the
 scale-in observation is cut short:
 
-    # 15 + 30 + 180 + 300 + margin:
-    python scripts/record_scaling.py --duration 660 --interval 5
+    # 15 + 30 + 180 + 60 + margin:
+    python scripts/record_scaling.py --duration 420 --interval 5
 
 Use `--kubectl <matching-client-path> --context ai-serving-local` for this local
 cluster. Existing output files are refused to prevent accidentally concatenating
